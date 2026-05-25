@@ -1,0 +1,127 @@
+import { NextResponse, type NextRequest } from 'next/server';
+import { z } from 'zod';
+import { Prisma } from '@/lib/generated/prisma/client';
+import { prisma } from '@/lib/prisma';
+import { getAuthedUser } from '@/lib/supabase-server';
+import { broadcast, officerTopic } from '@/lib/realtime';
+
+export const runtime = 'nodejs';
+
+const BodySchema = z.object({
+  reason: z.string().trim().min(1, 'A non-empty reason is required').max(2000),
+});
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: { id: string } },
+) {
+  const authUser = await getAuthedUser();
+  if (!authUser) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const me = await prisma.user.findUnique({
+    where: { supabaseUserId: authUser.id },
+    select: { id: true, role: true, isActive: true },
+  });
+  if (!me || !me.isActive) {
+    return NextResponse.json({ error: 'User not provisioned' }, { status: 403 });
+  }
+  if (me.role !== 'MANAGER' && me.role !== 'ADMIN') {
+    return NextResponse.json({ error: 'Only managers can reject trips' }, { status: 403 });
+  }
+
+  let body: z.infer<typeof BodySchema>;
+  try {
+    body = BodySchema.parse(await req.json());
+  } catch (err) {
+    const message =
+      err instanceof z.ZodError ? err.issues.map((i) => i.message).join('; ') : 'Invalid body';
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+
+  const trip = await prisma.trip.findUnique({
+    where: { id: params.id },
+    select: {
+      id: true,
+      status: true,
+      userId: true,
+      user: { select: { managerId: true } },
+    },
+  });
+  if (!trip) {
+    return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
+  }
+  if (me.role !== 'ADMIN' && trip.user.managerId !== me.id) {
+    return NextResponse.json(
+      { error: 'You can only reject trips from your own team' },
+      { status: 403 },
+    );
+  }
+  if (trip.status !== 'PENDING') {
+    return NextResponse.json(
+      { error: `Trip is ${trip.status}; only PENDING trips can be rejected` },
+      { status: 409 },
+    );
+  }
+
+  let updated;
+  try {
+    updated = await prisma.$transaction(async (tx) => {
+      const t = await tx.trip.update({
+        where: { id: trip.id, status: 'PENDING' },
+        data: {
+          status: 'REJECTED',
+          approverId: me.id,
+          rejectedAt: new Date(),
+          rejectionReason: body.reason,
+        },
+        select: {
+          id: true,
+          userId: true,
+          status: true,
+          rejectedAt: true,
+          rejectionReason: true,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: me.id,
+          entityType: 'Trip',
+          entityId: t.id,
+          action: 'REJECTED',
+          oldValues: { status: 'PENDING' },
+          newValues: {
+            status: 'REJECTED',
+            rejectedAt: t.rejectedAt,
+            rejectionReason: t.rejectionReason,
+          },
+        },
+      });
+      return t;
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      return NextResponse.json(
+        { error: 'Trip status changed before we could reject it. Refresh and try again.' },
+        { status: 409 },
+      );
+    }
+    console.error('PATCH /api/claims/[id]/reject failed', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+
+  await broadcast({
+    topic: officerTopic(updated.userId),
+    event: 'trip:rejected',
+    payload: {
+      tripId: updated.id,
+      newStatus: 'REJECTED',
+      rejectedAt: updated.rejectedAt,
+      rejectionReason: updated.rejectionReason,
+      approverId: me.id,
+    },
+  });
+
+  return NextResponse.json({ trip: updated });
+}

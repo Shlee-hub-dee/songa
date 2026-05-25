@@ -1,0 +1,262 @@
+// Songa — Field Transport Manager
+// Prisma schema for One Acre Fund field officer reimbursement.
+// Postgres on Supabase. Rate resolution and audit logging happen server-side.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Enums ────────────────────────────────────────────────────────────────────
+
+enum Role {
+  FIELD_OFFICER
+  MANAGER
+  FINANCE
+  ADMIN
+}
+
+enum TripStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  REIMBURSED
+}
+
+enum TripType {
+  FARMER_ENROLLMENT
+  GROUP_TRAINING
+  LOAN_FOLLOWUP
+  INPUT_DISTRIBUTION
+  OTHER
+}
+
+enum AuditAction {
+  CREATED
+  UPDATED
+  SUBMITTED
+  APPROVED
+  REJECTED
+  REIMBURSED
+  DELETED
+  LOGIN
+  LOGOUT
+  ROLE_CHANGED
+  RATE_CHANGED
+}
+
+enum ErrorSeverity {
+  INFO
+  WARNING
+  ERROR
+  FATAL
+}
+
+// ── Core models ──────────────────────────────────────────────────────────────
+
+model User {
+  id             String    @id @default(cuid())
+  // Link to Supabase auth.users. Optional so we can seed admins before invite.
+  supabaseUserId String?   @unique @map("supabase_user_id")
+  email          String    @unique
+  phone          String?   @unique
+  name           String
+  role           Role      @default(FIELD_OFFICER)
+  // Self-referential manager hierarchy. Managers see trips from their reports.
+  managerId      String?   @map("manager_id")
+  manager        User?     @relation("UserManager", fields: [managerId], references: [id], onDelete: SetNull)
+  reports        User[]    @relation("UserManager")
+  // Region/team metadata for filtering
+  region         String?
+  isActive       Boolean   @default(true) @map("is_active")
+  lastLoginAt    DateTime? @map("last_login_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  trips           Trip[]           @relation("TripOfficer")
+  tripsApproved   Trip[]           @relation("TripApprover")
+  payments        MpesaPayment[]   @relation("MpesaPaidBy")
+  rateConfigs     RateConfig[]     @relation("RateCreatedBy")
+  auditLogs       AuditLog[]       @relation("AuditActor")
+  analyticsEvents AnalyticsEvent[]
+  errorReports    ErrorReport[]
+
+  @@index([managerId])
+  @@index([role])
+  @@map("users")
+}
+
+model Trip {
+  id     String @id @default(cuid())
+  userId String @map("user_id")
+  user   User   @relation("TripOfficer", fields: [userId], references: [id], onDelete: Cascade)
+
+  type    TripType
+  purpose String?  @db.Text
+  notes   String?  @db.Text
+
+  // Timing
+  startTime DateTime  @map("start_time")
+  endTime   DateTime? @map("end_time")
+
+  // GPS — captured via watchPosition with accuracy filter (reject > 50m)
+  startLat      Decimal  @map("start_lat") @db.Decimal(10, 7)
+  startLng      Decimal  @map("start_lng") @db.Decimal(10, 7)
+  endLat        Decimal? @map("end_lat") @db.Decimal(10, 7)
+  endLng        Decimal? @map("end_lng") @db.Decimal(10, 7)
+  // Best accuracy observed in meters (for audit / dispute resolution)
+  gpsAccuracyM  Decimal? @map("gps_accuracy_m") @db.Decimal(6, 2)
+  // Raw waypoint count and optional polyline for review
+  gpsPointCount Int      @default(0) @map("gps_point_count")
+  gpsTrail      Json?    @map("gps_trail") // [{lat, lng, ts, accuracy}, ...]
+
+  // Distance & money — distance is client-computed but server-validated.
+  distanceKm Decimal @map("distance_km") @db.Decimal(8, 3)
+  ratePerKm  Decimal @map("rate_per_km") @db.Decimal(10, 2)
+  amountKes  Decimal @map("amount_kes") @db.Decimal(12, 2)
+  currency   String  @default("KES")
+
+  // Rate snapshot — which RateConfig was applied at submission time
+  rateConfigId String?     @map("rate_config_id")
+  rateConfig   RateConfig? @relation(fields: [rateConfigId], references: [id], onDelete: SetNull)
+
+  // Workflow
+  status       TripStatus @default(DRAFT)
+  submittedAt  DateTime?  @map("submitted_at")
+  approvedAt   DateTime?  @map("approved_at")
+  rejectedAt   DateTime?  @map("rejected_at")
+  reimbursedAt DateTime?  @map("reimbursed_at")
+
+  approverId      String? @map("approver_id")
+  approver        User?   @relation("TripApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  approverNotes   String? @map("approver_notes") @db.Text
+  rejectionReason String? @map("rejection_reason") @db.Text
+
+  // Payment (one-to-one)
+  payment MpesaPayment?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, status])
+  @@index([status, submittedAt])
+  @@index([approverId])
+  @@index([startTime])
+  @@map("trips")
+}
+
+model MpesaPayment {
+  id     String @id @default(cuid())
+  tripId String @unique @map("trip_id")
+  trip   Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  // Fraud guard — same M-Pesa reference cannot reimburse two trips.
+  mpesaRef       String  @unique @map("mpesa_ref")
+  amountKes      Decimal @map("amount_kes") @db.Decimal(12, 2)
+  recipientPhone String  @map("recipient_phone")
+  // Supabase Storage path in private bucket "mpesa-screenshots"
+  // Optional — finance can attach (a) just a ref + amount, or (b) ref + screenshot.
+  screenshotPath String? @map("screenshot_path")
+
+  paidById String   @map("paid_by_id")
+  paidBy   User     @relation("MpesaPaidBy", fields: [paidById], references: [id])
+  paidAt   DateTime @map("paid_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([paidById])
+  @@index([paidAt])
+  @@map("mpesa_payments")
+}
+
+model RateConfig {
+  id            String   @id @default(cuid())
+  ratePerKm     Decimal  @map("rate_per_km") @db.Decimal(10, 2)
+  currency      String   @default("KES")
+  // Rate is resolved server-side:
+  //   SELECT rate_per_km FROM rate_configs
+  //   WHERE effective_date <= trip.start_time
+  //   ORDER BY effective_date DESC LIMIT 1
+  effectiveDate DateTime @map("effective_date")
+  notes         String?  @db.Text
+
+  createdById String   @map("created_by_id")
+  createdBy   User     @relation("RateCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  trips Trip[]
+
+  @@index([effectiveDate])
+  @@map("rate_configs")
+}
+
+// ── Observability ────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id      String  @id @default(cuid())
+  // Actor — nullable for system-initiated events
+  actorId String? @map("actor_id")
+  actor   User?   @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  entityType String      @map("entity_type") // "Trip", "User", "RateConfig", ...
+  entityId   String      @map("entity_id")
+  action     AuditAction
+
+  oldValues Json?   @map("old_values")
+  newValues Json?   @map("new_values")
+  metadata  Json?
+  ipAddress String? @map("ip_address")
+  userAgent String? @map("user_agent") @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([createdAt])
+  @@map("audit_log")
+}
+
+model AnalyticsEvent {
+  id     String  @id @default(cuid())
+  userId String? @map("user_id")
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  sessionId  String? @map("session_id")
+  eventName  String  @map("event_name") // e.g. "trip_started", "trip_submitted"
+  eventProps Json?   @map("event_props")
+  pageUrl    String? @map("page_url")
+  userAgent  String? @map("user_agent") @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([eventName, createdAt])
+  @@index([userId, createdAt])
+  @@map("analytics_events")
+}
+
+model ErrorReport {
+  id     String  @id @default(cuid())
+  userId String? @map("user_id")
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  sessionId      String?       @map("session_id")
+  message        String        @db.Text
+  stackTrace     String?       @map("stack_trace") @db.Text
+  componentStack String?       @map("component_stack") @db.Text
+  url            String?
+  userAgent      String?       @map("user_agent") @db.Text
+  severity       ErrorSeverity @default(ERROR)
+  metadata       Json?
+
+  resolvedAt DateTime? @map("resolved_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([severity, createdAt])
+  @@index([resolvedAt])
+  @@map("error_reports")
+}

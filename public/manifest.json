@@ -1,0 +1,41 @@
+{
+  "name": "Songa",
+  "short_name": "Songa",
+  "description": "One Acre Fund field officer transport reimbursement",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#006B3F",
+  "background_color": "#F2F7F4",
+  "lang": "en",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New trip",
+      "short_name": "New trip",
+      "description": "Start recording a field trip",
+      "url": "/dashboard/trips/new"
+    },
+    {
+      "name": "Approvals",
+      "short_name": "Approvals",
+      "description": "Review pending claims",
+      "url": "/dashboard/approvals"
+    }
+  ]
+}
