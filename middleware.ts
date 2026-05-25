@@ -3,14 +3,10 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 const PROTECTED_PREFIX = '/dashboard';
 const LOGIN_PATH = '/login';
-// TEMP: exempt the trip-recorder route for on-device GPS testing before /login
-// exists. Remove once auth is wired up.
-const DEV_BYPASS_PREFIXES = ['/dashboard/trips/new'];
 
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const isProtected = pathname.startsWith(PROTECTED_PREFIX);
-  const isBypassed = DEV_BYPASS_PREFIXES.some((p) => pathname.startsWith(p));
 
   // Response we'll return; the Supabase client may mutate cookies on it
   // (e.g. when it refreshes an expired access token).
@@ -40,7 +36,7 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (isProtected && !user && !isBypassed) {
+  if (isProtected && !user) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = LOGIN_PATH;
     redirectUrl.searchParams.set('redirectedFrom', pathname + search);

@@ -1,23 +1,51 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Songa schema — idempotent install.
+--
+-- Re-runnable without errors: enums wrap CREATE TYPE in DO blocks that swallow
+-- duplicate_object (Postgres has no CREATE TYPE IF NOT EXISTS), tables use
+-- CREATE TABLE IF NOT EXISTS, indexes use CREATE INDEX IF NOT EXISTS, and
+-- foreign keys wrap ALTER TABLE in DO blocks for the same reason as enums.
+--
+-- Apply via Supabase SQL editor, or:
+--   psql "$DATABASE_URL" -f prisma/sql/00_init_schema.sql
+-- ─────────────────────────────────────────────────────────────────────────────
+
 -- CreateSchema
 CREATE SCHEMA IF NOT EXISTS "public";
 
--- CreateEnum
-CREATE TYPE "Role" AS ENUM ('FIELD_OFFICER', 'MANAGER', 'FINANCE', 'ADMIN');
+-- CreateEnum (idempotent via DO-block — Postgres has no CREATE TYPE IF NOT EXISTS)
+DO $$ BEGIN
+    CREATE TYPE "Role" AS ENUM ('FIELD_OFFICER', 'MANAGER', 'FINANCE', 'ADMIN');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- CreateEnum
-CREATE TYPE "TripStatus" AS ENUM ('DRAFT', 'PENDING', 'APPROVED', 'REJECTED', 'REIMBURSED');
+DO $$ BEGIN
+    CREATE TYPE "TripStatus" AS ENUM ('DRAFT', 'PENDING', 'APPROVED', 'REJECTED', 'REIMBURSED');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- CreateEnum
-CREATE TYPE "TripType" AS ENUM ('FARMER_ENROLLMENT', 'GROUP_TRAINING', 'LOAN_FOLLOWUP', 'INPUT_DISTRIBUTION', 'OTHER');
+DO $$ BEGIN
+    CREATE TYPE "TripType" AS ENUM ('FARMER_ENROLLMENT', 'GROUP_TRAINING', 'LOAN_FOLLOWUP', 'INPUT_DISTRIBUTION', 'OTHER');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- CreateEnum
-CREATE TYPE "AuditAction" AS ENUM ('CREATED', 'UPDATED', 'SUBMITTED', 'APPROVED', 'REJECTED', 'REIMBURSED', 'DELETED', 'LOGIN', 'LOGOUT', 'ROLE_CHANGED', 'RATE_CHANGED');
+DO $$ BEGIN
+    CREATE TYPE "AuditAction" AS ENUM ('CREATED', 'UPDATED', 'SUBMITTED', 'APPROVED', 'REJECTED', 'REIMBURSED', 'DELETED', 'LOGIN', 'LOGOUT', 'ROLE_CHANGED', 'RATE_CHANGED');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- CreateEnum
-CREATE TYPE "ErrorSeverity" AS ENUM ('INFO', 'WARNING', 'ERROR', 'FATAL');
+DO $$ BEGIN
+    CREATE TYPE "ErrorSeverity" AS ENUM ('INFO', 'WARNING', 'ERROR', 'FATAL');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateTable
-CREATE TABLE "users" (
+CREATE TABLE IF NOT EXISTS "users" (
     "id" TEXT NOT NULL,
     "supabase_user_id" TEXT,
     "email" TEXT NOT NULL,
@@ -35,7 +63,7 @@ CREATE TABLE "users" (
 );
 
 -- CreateTable
-CREATE TABLE "trips" (
+CREATE TABLE IF NOT EXISTS "trips" (
     "id" TEXT NOT NULL,
     "user_id" TEXT NOT NULL,
     "type" "TripType" NOT NULL,
@@ -70,7 +98,7 @@ CREATE TABLE "trips" (
 );
 
 -- CreateTable
-CREATE TABLE "mpesa_payments" (
+CREATE TABLE IF NOT EXISTS "mpesa_payments" (
     "id" TEXT NOT NULL,
     "trip_id" TEXT NOT NULL,
     "mpesa_ref" TEXT NOT NULL,
@@ -85,7 +113,7 @@ CREATE TABLE "mpesa_payments" (
 );
 
 -- CreateTable
-CREATE TABLE "rate_configs" (
+CREATE TABLE IF NOT EXISTS "rate_configs" (
     "id" TEXT NOT NULL,
     "rate_per_km" DECIMAL(10,2) NOT NULL,
     "currency" TEXT NOT NULL DEFAULT 'KES',
@@ -98,7 +126,7 @@ CREATE TABLE "rate_configs" (
 );
 
 -- CreateTable
-CREATE TABLE "audit_log" (
+CREATE TABLE IF NOT EXISTS "audit_log" (
     "id" TEXT NOT NULL,
     "actor_id" TEXT,
     "entity_type" TEXT NOT NULL,
@@ -115,7 +143,7 @@ CREATE TABLE "audit_log" (
 );
 
 -- CreateTable
-CREATE TABLE "analytics_events" (
+CREATE TABLE IF NOT EXISTS "analytics_events" (
     "id" TEXT NOT NULL,
     "user_id" TEXT,
     "session_id" TEXT,
@@ -129,7 +157,7 @@ CREATE TABLE "analytics_events" (
 );
 
 -- CreateTable
-CREATE TABLE "error_reports" (
+CREATE TABLE IF NOT EXISTS "error_reports" (
     "id" TEXT NOT NULL,
     "user_id" TEXT,
     "session_id" TEXT,
@@ -147,94 +175,125 @@ CREATE TABLE "error_reports" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "users_supabase_user_id_key" ON "users"("supabase_user_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "users_supabase_user_id_key" ON "users"("supabase_user_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
+CREATE UNIQUE INDEX IF NOT EXISTS "users_email_key" ON "users"("email");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "users_phone_key" ON "users"("phone");
+CREATE UNIQUE INDEX IF NOT EXISTS "users_phone_key" ON "users"("phone");
 
 -- CreateIndex
-CREATE INDEX "users_manager_id_idx" ON "users"("manager_id");
+CREATE INDEX IF NOT EXISTS "users_manager_id_idx" ON "users"("manager_id");
 
 -- CreateIndex
-CREATE INDEX "users_role_idx" ON "users"("role");
+CREATE INDEX IF NOT EXISTS "users_role_idx" ON "users"("role");
 
 -- CreateIndex
-CREATE INDEX "trips_user_id_status_idx" ON "trips"("user_id", "status");
+CREATE INDEX IF NOT EXISTS "trips_user_id_status_idx" ON "trips"("user_id", "status");
 
 -- CreateIndex
-CREATE INDEX "trips_status_submitted_at_idx" ON "trips"("status", "submitted_at");
+CREATE INDEX IF NOT EXISTS "trips_status_submitted_at_idx" ON "trips"("status", "submitted_at");
 
 -- CreateIndex
-CREATE INDEX "trips_approver_id_idx" ON "trips"("approver_id");
+CREATE INDEX IF NOT EXISTS "trips_approver_id_idx" ON "trips"("approver_id");
 
 -- CreateIndex
-CREATE INDEX "trips_start_time_idx" ON "trips"("start_time");
+CREATE INDEX IF NOT EXISTS "trips_start_time_idx" ON "trips"("start_time");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "mpesa_payments_trip_id_key" ON "mpesa_payments"("trip_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "mpesa_payments_trip_id_key" ON "mpesa_payments"("trip_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "mpesa_payments_mpesa_ref_key" ON "mpesa_payments"("mpesa_ref");
+CREATE UNIQUE INDEX IF NOT EXISTS "mpesa_payments_mpesa_ref_key" ON "mpesa_payments"("mpesa_ref");
 
 -- CreateIndex
-CREATE INDEX "mpesa_payments_paid_by_id_idx" ON "mpesa_payments"("paid_by_id");
+CREATE INDEX IF NOT EXISTS "mpesa_payments_paid_by_id_idx" ON "mpesa_payments"("paid_by_id");
 
 -- CreateIndex
-CREATE INDEX "mpesa_payments_paid_at_idx" ON "mpesa_payments"("paid_at");
+CREATE INDEX IF NOT EXISTS "mpesa_payments_paid_at_idx" ON "mpesa_payments"("paid_at");
 
 -- CreateIndex
-CREATE INDEX "rate_configs_effective_date_idx" ON "rate_configs"("effective_date");
+CREATE INDEX IF NOT EXISTS "rate_configs_effective_date_idx" ON "rate_configs"("effective_date");
 
 -- CreateIndex
-CREATE INDEX "audit_log_entity_type_entity_id_idx" ON "audit_log"("entity_type", "entity_id");
+CREATE INDEX IF NOT EXISTS "audit_log_entity_type_entity_id_idx" ON "audit_log"("entity_type", "entity_id");
 
 -- CreateIndex
-CREATE INDEX "audit_log_actor_id_idx" ON "audit_log"("actor_id");
+CREATE INDEX IF NOT EXISTS "audit_log_actor_id_idx" ON "audit_log"("actor_id");
 
 -- CreateIndex
-CREATE INDEX "audit_log_created_at_idx" ON "audit_log"("created_at");
+CREATE INDEX IF NOT EXISTS "audit_log_created_at_idx" ON "audit_log"("created_at");
 
 -- CreateIndex
-CREATE INDEX "analytics_events_event_name_created_at_idx" ON "analytics_events"("event_name", "created_at");
+CREATE INDEX IF NOT EXISTS "analytics_events_event_name_created_at_idx" ON "analytics_events"("event_name", "created_at");
 
 -- CreateIndex
-CREATE INDEX "analytics_events_user_id_created_at_idx" ON "analytics_events"("user_id", "created_at");
+CREATE INDEX IF NOT EXISTS "analytics_events_user_id_created_at_idx" ON "analytics_events"("user_id", "created_at");
 
 -- CreateIndex
-CREATE INDEX "error_reports_severity_created_at_idx" ON "error_reports"("severity", "created_at");
+CREATE INDEX IF NOT EXISTS "error_reports_severity_created_at_idx" ON "error_reports"("severity", "created_at");
 
 -- CreateIndex
-CREATE INDEX "error_reports_resolved_at_idx" ON "error_reports"("resolved_at");
+CREATE INDEX IF NOT EXISTS "error_reports_resolved_at_idx" ON "error_reports"("resolved_at");
 
--- AddForeignKey
-ALTER TABLE "users" ADD CONSTRAINT "users_manager_id_fkey" FOREIGN KEY ("manager_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+-- AddForeignKey (idempotent via DO-block — ALTER TABLE has no IF NOT EXISTS)
+DO $$ BEGIN
+    ALTER TABLE "users" ADD CONSTRAINT "users_manager_id_fkey" FOREIGN KEY ("manager_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "trips" ADD CONSTRAINT "trips_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "trips" ADD CONSTRAINT "trips_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "trips" ADD CONSTRAINT "trips_rate_config_id_fkey" FOREIGN KEY ("rate_config_id") REFERENCES "rate_configs"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "trips" ADD CONSTRAINT "trips_rate_config_id_fkey" FOREIGN KEY ("rate_config_id") REFERENCES "rate_configs"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "trips" ADD CONSTRAINT "trips_approver_id_fkey" FOREIGN KEY ("approver_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "trips" ADD CONSTRAINT "trips_approver_id_fkey" FOREIGN KEY ("approver_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "mpesa_payments" ADD CONSTRAINT "mpesa_payments_trip_id_fkey" FOREIGN KEY ("trip_id") REFERENCES "trips"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "mpesa_payments" ADD CONSTRAINT "mpesa_payments_trip_id_fkey" FOREIGN KEY ("trip_id") REFERENCES "trips"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "mpesa_payments" ADD CONSTRAINT "mpesa_payments_paid_by_id_fkey" FOREIGN KEY ("paid_by_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "mpesa_payments" ADD CONSTRAINT "mpesa_payments_paid_by_id_fkey" FOREIGN KEY ("paid_by_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "rate_configs" ADD CONSTRAINT "rate_configs_created_by_id_fkey" FOREIGN KEY ("created_by_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "rate_configs" ADD CONSTRAINT "rate_configs_created_by_id_fkey" FOREIGN KEY ("created_by_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "audit_log" ADD CONSTRAINT "audit_log_actor_id_fkey" FOREIGN KEY ("actor_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "audit_log" ADD CONSTRAINT "audit_log_actor_id_fkey" FOREIGN KEY ("actor_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "analytics_events" ADD CONSTRAINT "analytics_events_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "analytics_events" ADD CONSTRAINT "analytics_events_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "error_reports" ADD CONSTRAINT "error_reports_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "error_reports" ADD CONSTRAINT "error_reports_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
