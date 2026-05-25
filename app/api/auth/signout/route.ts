@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   url.pathname = '/login';
   url.search = '?signedOut=1';
 
-  let response = NextResponse.redirect(url, { status: 303 });
+  const response = NextResponse.redirect(url, { status: 303 });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
