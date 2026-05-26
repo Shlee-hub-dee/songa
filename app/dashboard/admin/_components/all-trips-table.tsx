@@ -3,8 +3,8 @@
 import { useMemo, useState } from 'react';
 import { ROLE_LABEL, type Role } from '@/lib/roles';
 import { cn } from '@/lib/utils';
-import { StatusPill } from './status-pill';
-import { TripSidePanel } from './trip-side-panel';
+import { StatusPill } from '@/components/trip/status-pill';
+import { TripSidePanel } from '@/components/trip/trip-side-panel';
 
 export type TripRow = {
   id: string;

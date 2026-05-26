@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { ROLE_LABEL, type Role } from '@/lib/roles';
 import { cn } from '@/lib/utils';
 
 export type ClaimCardProps = {
@@ -13,22 +14,39 @@ export type ClaimCardProps = {
     amountKes: number;
     waypointCount: number;
     submittedAt: string | null;
-    officer: { id: string; name: string; region: string | null };
+    officer: {
+      id: string;
+      name: string;
+      role: Role;
+      organisationalUnit: string | null;
+    };
     payment: { mpesaRef: string; amountKes: number; screenshotPath: string | null } | null;
   };
+  /**
+   * When set, clicking anywhere on the card body opens the trip detail panel.
+   * Action buttons (approve/reject) stop propagation so they don't trigger it.
+   */
+  onOpen?: (id: string) => void;
 };
 
 const fmtKes = (v: number) =>
   new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(v);
 
-export function ClaimCard({ claim }: ClaimCardProps) {
+export function ClaimCard({ claim, onOpen }: ClaimCardProps) {
   const router = useRouter();
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  async function handleApprove() {
+  // stop the click reaching the card-body button so the side panel doesn't
+  // open every time the approver hits Approve / Reject / View screenshot.
+  function stop(e: React.SyntheticEvent) {
+    e.stopPropagation();
+  }
+
+  async function handleApprove(e: React.MouseEvent) {
+    stop(e);
     setBusy('approve');
     setError(null);
     try {
@@ -45,7 +63,8 @@ export function ClaimCard({ claim }: ClaimCardProps) {
     }
   }
 
-  async function handleReject() {
+  async function handleReject(e?: React.MouseEvent) {
+    if (e) stop(e);
     const trimmed = reason.trim();
     if (!trimmed) {
       setError('A reason is required to reject.');
@@ -71,7 +90,8 @@ export function ClaimCard({ claim }: ClaimCardProps) {
     }
   }
 
-  async function viewScreenshot() {
+  async function viewScreenshot(e: React.MouseEvent) {
+    stop(e);
     if (!claim.payment?.screenshotPath) return;
     try {
       const res = await fetch(
@@ -89,18 +109,31 @@ export function ClaimCard({ claim }: ClaimCardProps) {
   }
 
   return (
-    <article className="rounded-lg border border-l-4 border-l-brand bg-card shadow-sm">
+    <article
+      onClick={() => onOpen?.(claim.id)}
+      className={cn(
+        'rounded-lg border border-l-4 border-l-brand bg-card shadow-sm transition-colors',
+        onOpen ? 'cursor-pointer hover:border-l-brand hover:bg-brand-surface/30' : null,
+      )}
+    >
       <header className="flex items-start justify-between gap-3 border-b p-4">
-        <div>
+        <div className="min-w-0 flex-1">
           <h2 className="text-base font-semibold text-foreground">{claim.officer.name}</h2>
-          <p className="text-xs text-muted-foreground">
-            {claim.officer.region ?? 'No region'} · {claim.typeLabel}
-            {claim.submittedAt
-              ? ` · submitted ${new Date(claim.submittedAt).toLocaleString()}`
-              : null}
+          <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="rounded-full bg-brand-surface px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-brand">
+              {ROLE_LABEL[claim.officer.role]}
+            </span>
+            <span>{claim.officer.organisationalUnit ?? 'No unit'}</span>
+            <span aria-hidden>·</span>
+            <span>{claim.typeLabel}</span>
           </p>
+          {claim.submittedAt ? (
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Submitted {new Date(claim.submittedAt).toLocaleString()}
+            </p>
+          ) : null}
         </div>
-        <span className="rounded-full bg-brand-surface px-2.5 py-0.5 text-xs font-medium text-brand">
+        <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900">
           Pending
         </span>
       </header>
@@ -133,7 +166,7 @@ export function ClaimCard({ claim }: ClaimCardProps) {
       ) : null}
 
       {rejecting ? (
-        <div className="space-y-2 border-t p-4">
+        <div className="space-y-2 border-t p-4" onClick={stop}>
           <label htmlFor={`reason-${claim.id}`} className="text-sm font-medium">
             Reason for rejection
           </label>
@@ -141,6 +174,7 @@ export function ClaimCard({ claim }: ClaimCardProps) {
             id={`reason-${claim.id}`}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
+            onClick={stop}
             rows={3}
             required
             placeholder="Tell the officer what to fix or why this can't be reimbursed."
@@ -150,7 +184,7 @@ export function ClaimCard({ claim }: ClaimCardProps) {
             <Button
               variant="destructive"
               className="h-11 flex-1"
-              onClick={handleReject}
+              onClick={(e) => handleReject(e)}
               disabled={busy !== null || !reason.trim()}
             >
               {busy === 'reject' ? 'Rejecting…' : 'Confirm reject'}
@@ -158,7 +192,8 @@ export function ClaimCard({ claim }: ClaimCardProps) {
             <Button
               variant="ghost"
               className="h-11 flex-1"
-              onClick={() => {
+              onClick={(e) => {
+                stop(e);
                 setRejecting(false);
                 setReason('');
                 setError(null);
@@ -181,7 +216,10 @@ export function ClaimCard({ claim }: ClaimCardProps) {
           <Button
             variant="outline"
             className={cn('h-11 flex-1 border-red-200 text-red-700 hover:bg-red-50')}
-            onClick={() => setRejecting(true)}
+            onClick={(e) => {
+              stop(e);
+              setRejecting(true);
+            }}
             disabled={busy !== null}
           >
             Reject

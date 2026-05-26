@@ -82,18 +82,79 @@ const DATE_TIME = new Intl.DateTimeFormat('en-KE', {
 export function TripSidePanel({
   tripId,
   onClose,
+  approver,
 }: {
   tripId: string | null;
   onClose: () => void;
+  /**
+   * When provided, renders Approve / Reject controls at the bottom of the
+   * panel for trips with status PENDING. The API still enforces no-self,
+   * direct-report, and role-tier rules — this prop just exposes the UI.
+   */
+  approver?: { onChanged?: () => void };
 }) {
   const [trip, setTrip] = useState<TripDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [action, setAction] = useState<'approve' | 'reject' | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectMode, setRejectMode] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  async function approve() {
+    if (!trip) return;
+    setAction('approve');
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/claims/${trip.id}/approve`, { method: 'PATCH' });
+      if (!res.ok) {
+        const b = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(b?.error ?? `Approve failed (${res.status})`);
+      }
+      approver?.onChanged?.();
+      onClose();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAction(null);
+    }
+  }
+
+  async function reject() {
+    if (!trip) return;
+    const trimmed = rejectReason.trim();
+    if (!trimmed) {
+      setActionError('A reason is required to reject.');
+      return;
+    }
+    setAction('reject');
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/claims/${trip.id}/reject`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: trimmed }),
+      });
+      if (!res.ok) {
+        const b = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(b?.error ?? `Reject failed (${res.status})`);
+      }
+      approver?.onChanged?.();
+      onClose();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAction(null);
+    }
+  }
 
   useEffect(() => {
     if (!tripId) {
       setTrip(null);
       setError(null);
+      setRejectMode(false);
+      setRejectReason('');
+      setActionError(null);
       return;
     }
     let cancelled = false;
@@ -282,6 +343,82 @@ export function TripSidePanel({
             </div>
           ) : null}
         </div>
+
+        {/* Approver footer — only when the caller passed `approver` and the
+            trip is still PENDING. The API enforces no-self / direct-report /
+            role-tier rules so an unauthorised click just produces a 403. */}
+        {approver && trip && trip.status === 'PENDING' ? (
+          <footer className="border-t bg-card p-4">
+            {actionError ? (
+              <p className="mb-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
+                {actionError}
+              </p>
+            ) : null}
+
+            {rejectMode ? (
+              <div className="space-y-2">
+                <label
+                  htmlFor="reject-reason"
+                  className="text-xs font-medium text-foreground"
+                >
+                  Reason for rejection
+                </label>
+                <textarea
+                  id="reject-reason"
+                  rows={3}
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  placeholder="Tell the officer what needs to change."
+                  className="w-full rounded-md border border-input bg-background p-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={reject}
+                    disabled={action !== null || !rejectReason.trim()}
+                    className="h-11 flex-1 rounded-md bg-destructive px-3 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-60"
+                  >
+                    {action === 'reject' ? 'Rejecting…' : 'Confirm reject'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRejectMode(false);
+                      setRejectReason('');
+                      setActionError(null);
+                    }}
+                    disabled={action !== null}
+                    className="h-11 flex-1 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-muted"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={approve}
+                  disabled={action !== null}
+                  className="h-11 flex-1 rounded-md bg-brand px-3 text-sm font-medium text-white hover:bg-brand/90 disabled:opacity-60"
+                >
+                  {action === 'approve' ? 'Approving…' : 'Approve'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRejectMode(true);
+                    setActionError(null);
+                  }}
+                  disabled={action !== null}
+                  className="h-11 flex-1 rounded-md border border-red-200 px-3 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"
+                >
+                  Reject
+                </button>
+              </div>
+            )}
+          </footer>
+        ) : null}
       </aside>
     </>
   );
