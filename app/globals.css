@@ -57,3 +57,21 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Print-only: hide the dashboard chrome (top nav, sidebar, bottom nav,
+ * filters, queue, charts) so window.print() emits a clean statement page.
+ * Anything inside an element with .print-area is the only thing kept. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    inset: 0;
+    background: white;
+  }
+}
