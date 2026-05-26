@@ -6,14 +6,22 @@
  *     --name "Doreen Sasaka" \
  *     --role ADMIN
  *
+ *   # field-staff form (manager + unit context for the approval chain)
+ *   npx tsx scripts/set-user-role.ts \
+ *     --email new.agent@x.com \
+ *     --name "Jane Doe" \
+ *     --role TUPANDE_AGENT \
+ *     --manager-email peter.macharia@tupande.dev \
+ *     --unit "Nakuru West Zone" \
+ *     --level ZONE
+ *
  * What it does:
  *   1. Finds the matching auth.users row in Supabase (by email).
- *   2. Upserts the public.users row keyed on email, setting role and
- *      linking supabase_user_id so /dashboard role resolution works.
+ *   2. Optionally resolves the line manager by email.
+ *   3. Upserts the public.users row keyed on email, setting role, supabase
+ *      link, manager, and (if supplied) organisationalUnit + unitLevel.
  *
  * Prerequisite: the user must already exist in Supabase Authentication.
- * Create them via Supabase Dashboard -> Authentication -> Users -> Add user
- * (or rely on first-time sign-up if you've enabled email signups).
  */
 import { config as loadEnv } from 'dotenv';
 loadEnv({ path: '.env.local' });
@@ -24,7 +32,9 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../lib/generated/prisma/client';
 import { normalizeDbUrl } from '../lib/db-url';
 
-import { ALL_ROLES, type Role } from '../lib/roles';
+import { ALL_ROLES, type Role, type UnitLevel } from '../lib/roles';
+
+const UNIT_LEVELS: readonly UnitLevel[] = ['ZONE', 'AREA', 'REGION'] as const;
 
 function parseArgs(argv: string[]): Record<string, string> {
   const out: Record<string, string> = {};
@@ -70,10 +80,16 @@ async function main() {
   const email = (args.email ?? '').trim();
   const name = (args.name ?? '').trim();
   const role = (args.role ?? '').trim().toUpperCase() as Role;
+  const managerEmail = (args['manager-email'] ?? '').trim();
+  const unit = (args.unit ?? '').trim();
+  const levelRaw = (args.level ?? '').trim().toUpperCase();
+  const level = levelRaw ? (levelRaw as UnitLevel) : null;
 
   if (!email) die('Missing --email');
   if (!name) die('Missing --name (used when creating the row)');
   if (!ALL_ROLES.includes(role)) die(`--role must be one of ${ALL_ROLES.join(', ')}`);
+  if (level && !UNIT_LEVELS.includes(level))
+    die(`--level must be one of ${UNIT_LEVELS.join(', ')}`);
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -101,6 +117,20 @@ async function main() {
   });
 
   try {
+    // Optional: resolve the line manager so the approval chain is wired up.
+    let managerId: string | null = null;
+    if (managerEmail) {
+      const manager = await prisma.user.findUnique({
+        where: { email: managerEmail },
+        select: { id: true, role: true, name: true },
+      });
+      if (!manager) {
+        die(`--manager-email ${managerEmail} has no public.users row. Provision them first.`);
+      }
+      managerId = manager.id;
+      console.log(`  -> manager: ${manager.name} (${manager.role})`);
+    }
+
     const before = await prisma.user.findUnique({ where: { email } });
     const user = await prisma.user.upsert({
       where: { email },
@@ -108,22 +138,40 @@ async function main() {
         role,
         supabaseUserId: authUser.id,
         name,
+        ...(managerId !== null ? { managerId } : {}),
+        ...(unit ? { organisationalUnit: unit } : {}),
+        ...(level ? { unitLevel: level } : {}),
       },
       create: {
         email,
         name,
         role,
         supabaseUserId: authUser.id,
+        managerId,
+        organisationalUnit: unit || null,
+        unitLevel: level,
       },
-      select: { id: true, email: true, name: true, role: true, supabaseUserId: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        supabaseUserId: true,
+        managerId: true,
+        organisationalUnit: true,
+        unitLevel: true,
+      },
     });
 
     console.log(`\n${before ? 'Updated' : 'Created'} public.users row:`);
-    console.log(`  id:               ${user.id}`);
-    console.log(`  email:            ${user.email}`);
-    console.log(`  name:             ${user.name}`);
-    console.log(`  role:             ${user.role}`);
-    console.log(`  supabase_user_id: ${user.supabaseUserId}`);
+    console.log(`  id:                  ${user.id}`);
+    console.log(`  email:               ${user.email}`);
+    console.log(`  name:                ${user.name}`);
+    console.log(`  role:                ${user.role}`);
+    console.log(`  supabase_user_id:    ${user.supabaseUserId}`);
+    console.log(`  manager_id:          ${user.managerId ?? '(none)'}`);
+    console.log(`  organisational_unit: ${user.organisationalUnit ?? '(none)'}`);
+    console.log(`  unit_level:          ${user.unitLevel ?? '(none)'}`);
     console.log('\nDone.');
   } finally {
     await prisma.$disconnect();
