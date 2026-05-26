@@ -5,6 +5,7 @@ import { getAuthedUser } from '@/lib/supabase-server';
 import { resolveRateForDate } from '@/lib/rates';
 import { TRIP_TYPE_LABEL, type TripType } from '@/lib/active-trip';
 import { ROLE_LABEL, type Role } from '@/lib/roles';
+import { BlockedNotice, parseBlockedReason } from '@/components/nav/blocked-notice';
 import { EarningsChart, type MonthlyEarnings } from './_components/earnings-chart';
 
 export const dynamic = 'force-dynamic';
@@ -72,7 +73,9 @@ function buildLast6Months(): MonthlyEarnings[] {
   return out;
 }
 
-export default async function OfficerDashboard() {
+type Props = { searchParams: { blocked?: string; role?: string } };
+
+export default async function OfficerDashboard({ searchParams }: Props) {
   const authUser = await getAuthedUser();
   if (!authUser) redirect('/login');
 
@@ -175,6 +178,16 @@ export default async function OfficerDashboard() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 pb-28 pt-4 sm:px-6 sm:pb-32 sm:pt-6">
+      {(() => {
+        const reason = parseBlockedReason(searchParams.blocked);
+        return reason ? (
+          <BlockedNotice
+            role={searchParams.role as Role | undefined}
+            reason={reason}
+          />
+        ) : null;
+      })()}
+
       {/* ── Welcome banner ── */}
       {/* Page is shared by anyone who can log trips (AGENT / SUPERVISOR /
           COORDINATOR), so the eyebrow label echoes the user's actual role

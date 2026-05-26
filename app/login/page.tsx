@@ -34,10 +34,10 @@ export default async function LoginPage({ searchParams }: Props) {
             <Image
               src="/tupande-logo.jpg"
               alt="Tupande"
-              width={240}
-              height={135}
+              width={160}
+              height={90}
               priority
-              className="h-auto w-40 rounded-lg shadow-sm sm:w-48"
+              className="h-auto w-40 rounded-lg shadow-sm"
             />
           </div>
           <h1 className="mt-3 text-3xl font-bold text-brand">Songa</h1>

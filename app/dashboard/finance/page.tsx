@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getAuthedUser } from '@/lib/supabase-server';
 import { TRIP_TYPE_LABEL, type TripType } from '@/lib/active-trip';
 import { ROLE_LABEL, type Role } from '@/lib/roles';
-import { BlockedNotice } from '@/components/nav/blocked-notice';
+import { BlockedNotice, parseBlockedReason } from '@/components/nav/blocked-notice';
 import { KpiCard } from '../admin/_components/kpi-card';
 import { FilterBar } from './_components/filter-bar';
 import { FinanceView } from './_components/finance-view';
@@ -267,9 +267,12 @@ export default async function FinancePage({ searchParams }: Props) {
 
   return (
     <main className="mx-auto max-w-6xl p-4 sm:p-6">
-      {searchParams.blocked === 'trip-log' ? (
-        <BlockedNotice reason="trip-log" />
-      ) : null}
+      {(() => {
+        const reason = parseBlockedReason(searchParams.blocked);
+        return reason ? (
+          <BlockedNotice role={searchParams.role as Role | undefined} reason={reason} />
+        ) : null;
+      })()}
 
       <header className="mb-5 flex flex-wrap items-baseline justify-between gap-3">
         <div>

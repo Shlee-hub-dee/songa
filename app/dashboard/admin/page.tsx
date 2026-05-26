@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getAuthedUser } from '@/lib/supabase-server';
 import { TRIP_TYPE_LABEL, type TripType } from '@/lib/active-trip';
 import { type Role } from '@/lib/roles';
-import { BlockedNotice } from '@/components/nav/blocked-notice';
+import { BlockedNotice, parseBlockedReason } from '@/components/nav/blocked-notice';
 import { KpiCard } from './_components/kpi-card';
 import { PipelineStrip, type PipelineStage } from './_components/pipeline-strip';
 import { BusiestChart, type DailyCount } from './_components/busiest-chart';
@@ -159,12 +159,12 @@ export default async function AdminOverview({ searchParams }: Props) {
 
   return (
     <main className="mx-auto max-w-6xl p-4 sm:p-6">
-      {searchParams.blocked === 'trip-log' ? (
-        <BlockedNotice
-          role={searchParams.role as Role | undefined}
-          reason="trip-log"
-        />
-      ) : null}
+      {(() => {
+        const reason = parseBlockedReason(searchParams.blocked);
+        return reason ? (
+          <BlockedNotice role={searchParams.role as Role | undefined} reason={reason} />
+        ) : null;
+      })()}
 
       <header className="mb-5">
         <p className="text-xs font-medium uppercase tracking-wide text-brand">Admin</p>

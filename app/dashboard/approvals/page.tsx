@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getAuthedUser } from '@/lib/supabase-server';
 import { TRIP_TYPE_LABEL, type TripType } from '@/lib/active-trip';
 import { ROLE_LABEL, type Role } from '@/lib/roles';
-import { BlockedNotice } from '@/components/nav/blocked-notice';
+import { BlockedNotice, parseBlockedReason } from '@/components/nav/blocked-notice';
 import { HierarchyBreadcrumb } from './_components/hierarchy-breadcrumb';
 import { ApprovalsView } from './_components/approvals-view';
 import { KpiCard } from '../admin/_components/kpi-card';
@@ -227,9 +227,12 @@ export default async function ApprovalsPage({ searchParams }: Props) {
 
   return (
     <main className="mx-auto max-w-6xl p-4 sm:p-6">
-      {searchParams.blocked === 'trip-log' ? (
-        <BlockedNotice role={searchParams.role as Role | undefined} reason="trip-log" />
-      ) : null}
+      {(() => {
+        const reason = parseBlockedReason(searchParams.blocked);
+        return reason ? (
+          <BlockedNotice role={searchParams.role as Role | undefined} reason={reason} />
+        ) : null;
+      })()}
 
       {/* ── Title + breadcrumb ── */}
       <header className="mb-5">
