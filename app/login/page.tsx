@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import { redirect } from 'next/navigation';
 import { getAuthedUser } from '@/lib/supabase-server';
 import { LoginForm } from './_components/login-form';
@@ -29,9 +30,16 @@ export default async function LoginPage({ searchParams }: Props) {
     <main className="flex min-h-screen flex-col items-center justify-center bg-brand-surface p-4 sm:p-6">
       <div className="mx-auto w-full max-w-sm">
         <header className="mb-6 text-center">
-          <span className="inline-block rounded-full bg-brand px-3 py-1 text-xs font-medium text-primary-foreground">
-            One Acre Fund
-          </span>
+          <div className="mb-4 flex justify-center">
+            <Image
+              src="/tupande-logo.jpg"
+              alt="Tupande"
+              width={240}
+              height={135}
+              priority
+              className="h-auto w-40 rounded-lg shadow-sm sm:w-48"
+            />
+          </div>
           <h1 className="mt-3 text-3xl font-bold text-brand">Songa</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Sign in to log trips and submit reimbursement claims.

@@ -19,7 +19,7 @@ import { config as loadEnv } from 'dotenv';
 loadEnv({ path: '.env.local' });
 loadEnv();
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../lib/generated/prisma/client';
 import { normalizeDbUrl } from '../lib/db-url';
@@ -51,7 +51,8 @@ function die(msg: string): never {
 }
 
 async function findAuthUserByEmail(
-  supabase: ReturnType<typeof createClient>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any, any, any, any, any>,
   email: string,
 ): Promise<{ id: string; email: string } | null> {
   // Supabase admin SDK paginates; for a small org one page is enough.

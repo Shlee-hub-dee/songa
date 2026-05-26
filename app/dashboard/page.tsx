@@ -5,7 +5,7 @@ import { getAuthedUser } from '@/lib/supabase-server';
 export const dynamic = 'force-dynamic';
 
 const ROLE_HOME: Record<string, string> = {
-  FIELD_OFFICER: '/dashboard/trips/new',
+  FIELD_OFFICER: '/dashboard/officer',
   MANAGER: '/dashboard/approvals',
   FINANCE: '/dashboard/finance',
   ADMIN: '/dashboard/admin/rates',
@@ -20,5 +20,5 @@ export default async function DashboardIndex() {
     select: { role: true },
   });
 
-  redirect(ROLE_HOME[profile?.role ?? ''] ?? '/dashboard/trips/new');
+  redirect(ROLE_HOME[profile?.role ?? ''] ?? '/dashboard/officer');
 }
