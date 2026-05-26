@@ -2,11 +2,15 @@ import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { getAuthedUser } from '@/lib/supabase-server';
 import { TRIP_TYPE_LABEL, type TripType } from '@/lib/active-trip';
+import { type Role } from '@/lib/roles';
+import { BlockedNotice } from '@/components/nav/blocked-notice';
 import { ClaimCard } from './_components/claim-card';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ApprovalsPage() {
+type Props = { searchParams: { blocked?: string; role?: string } };
+
+export default async function ApprovalsPage({ searchParams }: Props) {
   const authUser = await getAuthedUser();
   if (!authUser) redirect('/login');
 
@@ -43,6 +47,9 @@ export default async function ApprovalsPage() {
 
   return (
     <main className="mx-auto max-w-2xl p-4 sm:p-6 tablet:max-w-5xl">
+      {searchParams.blocked === 'trip-log' ? (
+        <BlockedNotice role={searchParams.role as Role | undefined} reason="trip-log" />
+      ) : null}
       <header className="mb-5">
         <p className="text-xs font-medium uppercase tracking-wide text-brand">Approvals</p>
         <h1 className="text-2xl font-bold leading-tight text-foreground">Pending claims</h1>

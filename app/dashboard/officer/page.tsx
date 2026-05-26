@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { getAuthedUser } from '@/lib/supabase-server';
 import { resolveRateForDate } from '@/lib/rates';
 import { TRIP_TYPE_LABEL, type TripType } from '@/lib/active-trip';
+import { ROLE_LABEL, type Role } from '@/lib/roles';
 import { EarningsChart, type MonthlyEarnings } from './_components/earnings-chart';
 
 export const dynamic = 'force-dynamic';
@@ -175,9 +176,12 @@ export default async function OfficerDashboard() {
   return (
     <main className="mx-auto max-w-6xl px-4 pb-28 pt-4 sm:px-6 sm:pb-32 sm:pt-6">
       {/* ── Welcome banner ── */}
+      {/* Page is shared by anyone who can log trips (AGENT / SUPERVISOR /
+          COORDINATOR), so the eyebrow label echoes the user's actual role
+          rather than the literal "Field Officer". */}
       <section className="rounded-xl border border-brand/20 bg-gradient-to-r from-brand to-brand/80 p-5 text-white shadow-sm sm:p-6">
         <p className="text-xs font-medium uppercase tracking-wide text-white/80">
-          Field Officer
+          {ROLE_LABEL[me.role as Role] ?? 'Field Officer'}
         </p>
         <h1 className="mt-1 text-2xl font-bold leading-tight sm:text-3xl">
           Karibu, {firstName(me.name)}
@@ -261,7 +265,7 @@ export default async function OfficerDashboard() {
       </section>
 
       {/* ── My trips table ── */}
-      <section className="mt-6" aria-label="My trips">
+      <section id="trips" className="mt-6 scroll-mt-20" aria-label="My trips">
         <header className="mb-3 flex items-baseline justify-between">
           <h2 className="text-base font-semibold text-foreground sm:text-lg">My trips</h2>
           <p className="text-xs text-muted-foreground">{totalTrips} total</p>

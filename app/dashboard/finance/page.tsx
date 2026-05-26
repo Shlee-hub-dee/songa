@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { getAuthedUser } from '@/lib/supabase-server';
 import { TRIP_TYPE_LABEL, type TripType } from '@/lib/active-trip';
+import { type Role } from '@/lib/roles';
+import { BlockedNotice } from '@/components/nav/blocked-notice';
 import { FiltersForm } from './_components/filters-form';
 import { ClaimsTable, type ClaimRow } from './_components/claims-table';
 
@@ -12,6 +14,8 @@ type SearchParams = {
   to?: string;
   officerId?: string;
   region?: string;
+  blocked?: string;
+  role?: string;
 };
 
 const fmtKes = (v: number) =>
@@ -131,6 +135,9 @@ export default async function FinancePage({
 
   return (
     <main className="mx-auto max-w-6xl p-4 sm:p-6">
+      {searchParams.blocked === 'trip-log' ? (
+        <BlockedNotice role={searchParams.role as Role | undefined} reason="trip-log" />
+      ) : null}
       <header className="mb-5">
         <p className="text-xs font-medium uppercase tracking-wide text-brand">Finance</p>
         <h1 className="text-2xl font-bold leading-tight text-foreground">Approved claims</h1>

@@ -1,9 +1,13 @@
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { getAuthedUser } from '@/lib/supabase-server';
+import { type Role } from '@/lib/roles';
+import { BlockedNotice } from '@/components/nav/blocked-notice';
 import { NewRateForm } from './_components/new-rate-form';
 
 export const dynamic = 'force-dynamic';
+
+type Props = { searchParams: { blocked?: string; role?: string } };
 
 const fmtKes = (v: number) =>
   new Intl.NumberFormat('en-KE', {
@@ -15,7 +19,7 @@ const fmtKes = (v: number) =>
 const fmtDateTime = (d: Date) =>
   new Intl.DateTimeFormat('en-KE', { dateStyle: 'medium', timeStyle: 'short' }).format(d);
 
-export default async function AdminRatesPage() {
+export default async function AdminRatesPage({ searchParams }: Props) {
   const authUser = await getAuthedUser();
   if (!authUser) redirect('/login');
 
@@ -46,6 +50,9 @@ export default async function AdminRatesPage() {
 
   return (
     <main className="mx-auto max-w-3xl p-4 sm:p-6">
+      {searchParams.blocked === 'trip-log' ? (
+        <BlockedNotice role={searchParams.role as Role | undefined} reason="trip-log" />
+      ) : null}
       <header className="mb-5">
         <p className="text-xs font-medium uppercase tracking-wide text-brand">Admin</p>
         <h1 className="text-2xl font-bold leading-tight text-foreground">Mileage rate</h1>

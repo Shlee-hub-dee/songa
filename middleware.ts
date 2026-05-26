@@ -5,9 +5,15 @@ const PROTECTED_PREFIX = '/dashboard';
 const LOGIN_PATH = '/login';
 const TRIP_LOG_PATH = '/dashboard/trips/new';
 
-// Roles that are NOT allowed to log trips. Mirrored in app/dashboard/trips/new
-// (server guard) and app/api/trips POST (API guard) — three layers of defence.
-const NON_LOGGING_ROLES = new Set(['REGIONAL_MANAGER', 'FINANCE_MANAGER', 'ADMIN']);
+// Roles that are NOT allowed to log trips, with their role-home destination
+// when redirected. Mirrors lib/roles.ts → ROLE_HOME — duplicated here because
+// middleware can't import from app code (edge runtime, different module
+// graph). Keep in sync when adding new roles.
+const NON_LOGGING_HOMES: Record<string, string> = {
+  REGIONAL_MANAGER: '/dashboard/approvals',
+  FINANCE_MANAGER: '/dashboard/finance',
+  ADMIN: '/dashboard/admin/rates',
+};
 
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
@@ -60,9 +66,12 @@ export async function middleware(request: NextRequest) {
   // Role gate for /dashboard/trips/new. Only checked when JWT-embedded role is
   // populated — if it's missing (e.g. user freshly provisioned), we let the
   // server-side page guard handle it using the Prisma user row as truth.
-  if (user && isTripLog && role && NON_LOGGING_ROLES.has(role)) {
+  // Blocked roles are sent to their role-home (e.g. RM → /dashboard/approvals)
+  // with ?blocked=trip-log so the destination page can render the notice.
+  if (user && isTripLog && role && role in NON_LOGGING_HOMES) {
     const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = '/dashboard';
+    redirectUrl.pathname = NON_LOGGING_HOMES[role];
+    redirectUrl.search = '';
     redirectUrl.searchParams.set('blocked', 'trip-log');
     redirectUrl.searchParams.set('role', role);
     return NextResponse.redirect(redirectUrl);
