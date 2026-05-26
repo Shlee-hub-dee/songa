@@ -51,36 +51,41 @@ export async function PATCH(
     return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
   }
 
-  // Same three rules as approve: no self-action, direct-report only, correct
-  // approver role tier.
+  // Same self-approval block as approve: no user — including ADMIN — may
+  // reject their own trip.
   if (trip.userId === me.id) {
     return NextResponse.json(
       { error: 'You cannot reject your own trip.' },
       { status: 403 },
     );
   }
-  if (trip.user.managerId !== me.id) {
-    return NextResponse.json(
-      { error: 'You can only reject trips from your direct reports.' },
-      { status: 403 },
-    );
-  }
-  const submitterRole = trip.user.role as Role;
-  const required = expectedApproverRole(submitterRole);
-  if (!required) {
-    return NextResponse.json(
-      { error: 'This role cannot submit trips for approval.' },
-      { status: 403 },
-    );
-  }
-  if (me.role !== required) {
-    return NextResponse.json(
-      {
-        error: `Only a ${required.replace(/_/g, ' ').toLowerCase()} can reject a ${submitterRole.replace(/_/g, ' ').toLowerCase()}'s trip.`,
-        code: 'WRONG_APPROVER_ROLE',
-      },
-      { status: 403 },
-    );
+
+  // ADMIN can reject any trip across the org. Other roles are restricted
+  // to direct reports + the matching approver tier.
+  if (me.role !== 'ADMIN') {
+    if (trip.user.managerId !== me.id) {
+      return NextResponse.json(
+        { error: 'You can only reject trips from your direct reports.' },
+        { status: 403 },
+      );
+    }
+    const submitterRole = trip.user.role as Role;
+    const required = expectedApproverRole(submitterRole);
+    if (!required) {
+      return NextResponse.json(
+        { error: 'This role cannot submit trips for approval.' },
+        { status: 403 },
+      );
+    }
+    if (me.role !== required) {
+      return NextResponse.json(
+        {
+          error: `Only a ${required.replace(/_/g, ' ').toLowerCase()} can reject a ${submitterRole.replace(/_/g, ' ').toLowerCase()}'s trip.`,
+          code: 'WRONG_APPROVER_ROLE',
+        },
+        { status: 403 },
+      );
+    }
   }
 
   if (trip.status !== 'PENDING') {

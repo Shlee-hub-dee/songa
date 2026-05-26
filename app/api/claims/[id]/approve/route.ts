@@ -45,36 +45,37 @@ export async function PATCH(
     );
   }
 
-  // Direct-report rule: each approver only sees / acts on trips from their
-  // direct reports. ADMIN gets the same restriction so the chain is consistent.
-  if (trip.user.managerId !== me.id) {
-    return NextResponse.json(
-      { error: 'You can only approve trips from your direct reports.' },
-      { status: 403 },
-    );
-  }
-
-  // Role-tier rule: the submitter's role determines who is allowed to approve.
-  //   TUPANDE_AGENT    → ZONE_SUPERVISOR
-  //   ZONE_SUPERVISOR  → AREA_COORDINATOR
-  //   AREA_COORDINATOR → REGIONAL_MANAGER
-  //   REGIONAL_MANAGER → ADMIN (finance disburses separately)
-  const submitterRole = trip.user.role as Role;
-  const required = expectedApproverRole(submitterRole);
-  if (!required) {
-    return NextResponse.json(
-      { error: 'This role cannot submit trips for approval.' },
-      { status: 403 },
-    );
-  }
-  if (me.role !== required) {
-    return NextResponse.json(
-      {
-        error: `Only a ${required.replace(/_/g, ' ').toLowerCase()} can approve a ${submitterRole.replace(/_/g, ' ').toLowerCase()}'s trip.`,
-        code: 'WRONG_APPROVER_ROLE',
-      },
-      { status: 403 },
-    );
+  // ADMIN can approve ANY trip regardless of organisational unit, manager
+  // chain, or role tier — they're the org-wide override. The self-approval
+  // rule above still applies to them.
+  //
+  // Every other approver is held to two rules:
+  //   - direct-report only (trip.user.managerId === approver.id)
+  //   - role-tier match (e.g. an Agent's trip needs a Zone Supervisor)
+  if (me.role !== 'ADMIN') {
+    if (trip.user.managerId !== me.id) {
+      return NextResponse.json(
+        { error: 'You can only approve trips from your direct reports.' },
+        { status: 403 },
+      );
+    }
+    const submitterRole = trip.user.role as Role;
+    const required = expectedApproverRole(submitterRole);
+    if (!required) {
+      return NextResponse.json(
+        { error: 'This role cannot submit trips for approval.' },
+        { status: 403 },
+      );
+    }
+    if (me.role !== required) {
+      return NextResponse.json(
+        {
+          error: `Only a ${required.replace(/_/g, ' ').toLowerCase()} can approve a ${submitterRole.replace(/_/g, ' ').toLowerCase()}'s trip.`,
+          code: 'WRONG_APPROVER_ROLE',
+        },
+        { status: 403 },
+      );
+    }
   }
 
   if (trip.status !== 'PENDING') {

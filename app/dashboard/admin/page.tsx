@@ -8,6 +8,10 @@ import { KpiCard } from './_components/kpi-card';
 import { PipelineStrip, type PipelineStage } from './_components/pipeline-strip';
 import { BusiestChart, type DailyCount } from './_components/busiest-chart';
 import { AllTripsTable, type TripRow } from './_components/all-trips-table';
+import {
+  AllPendingSection,
+  type PendingTripRow,
+} from './_components/all-pending-section';
 import { KES } from './_lib/formatters';
 
 export const dynamic = 'force-dynamic';
@@ -32,48 +36,77 @@ export default async function AdminOverview({ searchParams }: Props) {
     'AREA_COORDINATOR',
   ];
 
-  const [tripAggregate, approvedAgg, reimbursedAgg, fieldStaffCount, rawTrips, units] =
-    await Promise.all([
-      prisma.trip.aggregate({ _sum: { distanceKm: true } }),
-      prisma.trip.aggregate({
-        where: { status: 'APPROVED' },
-        _sum: { amountKes: true },
-      }),
-      prisma.trip.aggregate({
-        where: { status: 'REIMBURSED' },
-        _sum: { amountKes: true },
-      }),
-      prisma.user.count({
-        where: { isActive: true, role: { in: fieldStaffRoles } },
-      }),
-      prisma.trip.findMany({
-        select: {
-          id: true,
-          type: true,
-          status: true,
-          distanceKm: true,
-          amountKes: true,
-          startTime: true,
-          payment: { select: { id: true } },
-          user: {
-            select: {
-              id: true,
-              name: true,
-              role: true,
-              organisationalUnit: true,
-            },
+  const [
+    tripAggregate,
+    approvedAgg,
+    reimbursedAgg,
+    fieldStaffCount,
+    rawTrips,
+    units,
+    pendingRaw,
+  ] = await Promise.all([
+    prisma.trip.aggregate({ _sum: { distanceKm: true } }),
+    prisma.trip.aggregate({
+      where: { status: 'APPROVED' },
+      _sum: { amountKes: true },
+    }),
+    prisma.trip.aggregate({
+      where: { status: 'REIMBURSED' },
+      _sum: { amountKes: true },
+    }),
+    prisma.user.count({
+      where: { isActive: true, role: { in: fieldStaffRoles } },
+    }),
+    prisma.trip.findMany({
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        distanceKm: true,
+        amountKes: true,
+        startTime: true,
+        payment: { select: { id: true } },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            role: true,
+            organisationalUnit: true,
           },
         },
-        orderBy: { startTime: 'desc' },
-        take: 500,
-      }),
-      prisma.user.findMany({
-        where: { organisationalUnit: { not: null } },
-        select: { organisationalUnit: true },
-        distinct: ['organisationalUnit'],
-        orderBy: { organisationalUnit: 'asc' },
-      }),
-    ]);
+      },
+      orderBy: { startTime: 'desc' },
+      take: 500,
+    }),
+    prisma.user.findMany({
+      where: { organisationalUnit: { not: null } },
+      select: { organisationalUnit: true },
+      distinct: ['organisationalUnit'],
+      orderBy: { organisationalUnit: 'asc' },
+    }),
+    // Org-wide pending queue — no managerId filter because ADMIN can action
+    // any pending trip regardless of the approval chain.
+    prisma.trip.findMany({
+      where: { status: 'PENDING' },
+      select: {
+        id: true,
+        type: true,
+        distanceKm: true,
+        amountKes: true,
+        submittedAt: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            role: true,
+            organisationalUnit: true,
+          },
+        },
+      },
+      orderBy: { submittedAt: 'asc' },
+      take: 500,
+    }),
+  ]);
 
   // ── Pipeline ──
   // APPROVED + payment row = "Pending Disbursement"; APPROVED + no payment =
@@ -136,6 +169,22 @@ export default async function AdminOverview({ searchParams }: Props) {
     const iso = d.toISOString().slice(0, 10);
     daily.push({ dateIso: iso, count: dailyCounts.get(iso) ?? 0 });
   }
+
+  // ── All-pending rows (org-wide PENDING queue rendered for admin) ──
+  const pendingRows: PendingTripRow[] = pendingRaw.map((t) => ({
+    id: t.id,
+    typeLabel: TRIP_TYPE_LABEL[t.type as TripType],
+    distanceKm: Number(t.distanceKm),
+    amountKes: Number(t.amountKes),
+    submittedAtIso: t.submittedAt?.toISOString() ?? null,
+    officer: {
+      id: t.user.id,
+      name: t.user.name,
+      role: t.user.role as Role,
+      organisationalUnit: t.user.organisationalUnit,
+    },
+  }));
+  const pendingTotalAmount = pendingRows.reduce((s, r) => s + r.amountKes, 0);
 
   // ── Trips table rows ──
   const tripRows: TripRow[] = rawTrips.map((t) => ({
@@ -202,6 +251,26 @@ export default async function AdminOverview({ searchParams }: Props) {
           <p className="text-xs text-muted-foreground">Counts and totals per stage</p>
         </header>
         <PipelineStrip stages={pipeline} />
+      </section>
+
+      {/* ── All Pending Trips (org-wide) ──
+          Admins can act on any pending trip, ignoring the direct-report
+          and role-tier rules other approvers are bound by. Approving or
+          rejecting here writes to audit_log (actor = this admin) and
+          broadcasts on officer:{officerId} via the existing /api/claims
+          routes. */}
+      <section className="mt-6">
+        <header className="mb-3 flex items-baseline justify-between gap-3">
+          <h2 className="text-base font-semibold text-foreground sm:text-lg">
+            All pending trips
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            {pendingRows.length === 0
+              ? 'No pending trips'
+              : `${pendingRows.length} trip${pendingRows.length === 1 ? '' : 's'} · ${KES.format(pendingTotalAmount)}`}
+          </p>
+        </header>
+        <AllPendingSection trips={pendingRows} />
       </section>
 
       {/* ── Busiest days ── */}
