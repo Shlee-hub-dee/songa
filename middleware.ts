@@ -12,7 +12,7 @@ const TRIP_LOG_PATH = '/dashboard/trips/new';
 const NON_LOGGING_HOMES: Record<string, string> = {
   REGIONAL_MANAGER: '/dashboard/approvals',
   FINANCE_MANAGER: '/dashboard/finance',
-  ADMIN: '/dashboard/admin/rates',
+  ADMIN: '/dashboard/admin',
 };
 
 export async function middleware(request: NextRequest) {

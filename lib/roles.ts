@@ -84,7 +84,7 @@ export const ROLE_HOME: Record<Role, string> = {
   AREA_COORDINATOR: '/dashboard/approvals',
   REGIONAL_MANAGER: '/dashboard/approvals',
   FINANCE_MANAGER: '/dashboard/finance',
-  ADMIN: '/dashboard/admin/rates',
+  ADMIN: '/dashboard/admin',
 };
 
 // Short human labels for chips/headers.

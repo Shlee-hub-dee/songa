@@ -57,11 +57,11 @@ export const NAV_BY_ROLE: Record<Role, NavItem[]> = {
     { label: 'Officer Statements', href: '/dashboard/finance/statements', icon: 'statements' },
   ],
   ADMIN: [
-    { label: 'Overview', href: '/dashboard/admin/rates', icon: 'overview' },
+    { label: 'Overview', href: '/dashboard/admin', icon: 'overview' },
     { label: 'All Trips', href: '/dashboard/admin/trips', icon: 'allTrips' },
     { label: 'Users', href: '/dashboard/admin/users', icon: 'users' },
     { label: 'Org Chart', href: '/dashboard/admin/org', icon: 'org' },
     { label: 'Reports', href: '/dashboard/analytics', icon: 'report' },
-    { label: 'Settings', href: '/dashboard/admin/rates', icon: 'settings' },
+    { label: 'Rate Settings', href: '/dashboard/admin/settings', icon: 'settings' },
   ],
 };

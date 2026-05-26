@@ -1,13 +1,15 @@
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { getAuthedUser } from '@/lib/supabase-server';
-import { ROLE_LABEL, type Role } from '@/lib/roles';
+import { type Role } from '@/lib/roles';
+import { AddUserButton } from './_components/add-user-button';
+import { UsersTable, type UserRow } from './_components/users-table';
 
 export const dynamic = 'force-dynamic';
 
-// Admin-only directory of provisioned users. Stub: shows a paginated read-only
-// list. Editing (role / manager / unit reassignment) is a follow-up — for now
-// use scripts/set-user-role.ts on the operator's laptop.
+// Admin-only directory of provisioned users. Pulls trips count + joined date
+// per user, plus a manager-options list used by both the row dropdowns and
+// the Add User modal. Edits / deletions / invites flow through /api/users.
 export default async function AdminUsersPage() {
   const authUser = await getAuthedUser();
   if (!authUser) redirect('/login');
@@ -27,76 +29,56 @@ export default async function AdminUsersPage() {
       role: true,
       organisationalUnit: true,
       unitLevel: true,
-      manager: { select: { name: true } },
+      manager: { select: { email: true, name: true } },
       isActive: true,
+      createdAt: true,
+      _count: { select: { trips: true } },
     },
-    orderBy: [{ role: 'asc' }, { name: 'asc' }],
-    take: 500,
+    orderBy: [{ isActive: 'desc' }, { role: 'asc' }, { name: 'asc' }],
+    take: 1000,
   });
+
+  // Managers list = anyone who is at SUPERVISOR or above. Used in both row
+  // and Add-User dropdowns.
+  const managerOptions = users
+    .filter(
+      (u) =>
+        u.isActive &&
+        ['ZONE_SUPERVISOR', 'AREA_COORDINATOR', 'REGIONAL_MANAGER', 'ADMIN'].includes(
+          u.role,
+        ),
+    )
+    .map((u) => ({ email: u.email, name: `${u.name} (${u.role})` }));
+
+  const rows: UserRow[] = users.map((u) => ({
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    role: u.role as Role,
+    organisationalUnit: u.organisationalUnit,
+    unitLevel: u.unitLevel,
+    managerEmail: u.manager?.email ?? null,
+    managerName: u.manager?.name ?? null,
+    tripsCount: u._count.trips,
+    joinedAtIso: u.createdAt.toISOString(),
+    isActive: u.isActive,
+  }));
 
   return (
     <main className="mx-auto max-w-6xl p-4 sm:p-6">
-      <header className="mb-5">
-        <p className="text-xs font-medium uppercase tracking-wide text-brand">Admin</p>
-        <h1 className="text-2xl font-bold leading-tight text-foreground">Users</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {users.length} provisioned. Editing is via{' '}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">
-            scripts/set-user-role.ts
-          </code>{' '}
-          for now.
-        </p>
+      <header className="mb-5 flex flex-wrap items-baseline justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-brand">Admin</p>
+          <h1 className="text-2xl font-bold leading-tight text-foreground">Users</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {rows.length} provisioned · {rows.filter((u) => u.isActive).length} active.
+            Changes save immediately and are written to the audit log.
+          </p>
+        </div>
+        <AddUserButton managerOptions={managerOptions} />
       </header>
 
-      <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
-        <table className="w-full text-sm">
-          <thead className="bg-brand-surface/60 text-left text-xs font-medium uppercase tracking-wide text-brand">
-            <tr>
-              <th className="px-4 py-2.5">Name</th>
-              <th className="px-4 py-2.5">Email</th>
-              <th className="px-4 py-2.5">Role</th>
-              <th className="px-4 py-2.5">Unit</th>
-              <th className="px-4 py-2.5">Manager</th>
-              <th className="px-4 py-2.5">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {users.map((u) => (
-              <tr key={u.id} className="hover:bg-brand-surface/40">
-                <td className="px-4 py-3 font-medium text-foreground">{u.name}</td>
-                <td className="px-4 py-3 text-muted-foreground">{u.email}</td>
-                <td className="px-4 py-3">
-                  <span className="inline-flex items-center rounded-full bg-brand-surface px-2 py-0.5 text-xs font-medium text-brand">
-                    {ROLE_LABEL[u.role as Role]}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">
-                  {u.organisationalUnit ?? '—'}
-                  {u.unitLevel ? (
-                    <span className="ml-1 text-[10px] uppercase tracking-wide text-muted-foreground/70">
-                      ({u.unitLevel})
-                    </span>
-                  ) : null}
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">
-                  {u.manager?.name ?? '—'}
-                </td>
-                <td className="px-4 py-3">
-                  {u.isActive ? (
-                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-900">
-                      Active
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-700">
-                      Inactive
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <UsersTable rows={rows} managerOptions={managerOptions} />
     </main>
   );
 }
