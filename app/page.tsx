@@ -1,4 +1,5 @@
-import { Button } from '@/components/ui/button';
+import Link from 'next/link';
+import { buttonVariants } from '@/components/ui/button';
 
 export default function Home() {
   return (
@@ -13,8 +14,15 @@ export default function Home() {
         </p>
       </div>
       <div className="flex gap-3">
-        <Button>Log a trip</Button>
-        <Button variant="outline">Sign in</Button>
+        <Link
+          href="/login?redirectedFrom=/dashboard/trips/new"
+          className={buttonVariants()}
+        >
+          Log a trip
+        </Link>
+        <Link href="/login" className={buttonVariants({ variant: 'outline' })}>
+          Sign in
+        </Link>
       </div>
     </main>
   );
