@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { getAuthedUser } from '@/lib/supabase-server';
 import { NoRateConfiguredError, computeAmountKes, resolveRateForDate } from '@/lib/rates';
+import { canLogTrips, type Role } from '@/lib/roles';
 
 export const runtime = 'nodejs';
 
@@ -49,6 +50,15 @@ export async function POST(req: NextRequest) {
   });
   if (!me || !me.isActive) {
     return NextResponse.json({ error: 'User not provisioned' }, { status: 403 });
+  }
+  if (!canLogTrips(me.role as Role)) {
+    return NextResponse.json(
+      {
+        error: 'Trip logging is not available for your role.',
+        code: 'ROLE_CANNOT_LOG_TRIPS',
+      },
+      { status: 403 },
+    );
   }
 
   let body: z.infer<typeof BodySchema>;

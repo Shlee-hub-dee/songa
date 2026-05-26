@@ -1,5 +1,10 @@
 'use client';
 
+// NOTE: server-side role gate lives in [layout.tsx](./layout.tsx) below — RM /
+// FM / ADMIN never reach the client component because the layout redirects
+// them to /dashboard?blocked=trip-log. Middleware also blocks the route as a
+// belt-and-braces second layer.
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';

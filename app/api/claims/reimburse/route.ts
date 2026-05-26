@@ -23,9 +23,12 @@ export async function PATCH(req: NextRequest) {
   if (!me || !me.isActive) {
     return NextResponse.json({ error: 'User not provisioned' }, { status: 403 });
   }
-  if (me.role !== 'FINANCE' && me.role !== 'ADMIN') {
+  // Disbursal is the FINANCE_MANAGER's exclusive responsibility.
+  // ADMIN is intentionally NOT a fallback — disbursement separation of duties
+  // is part of the Tupande policy.
+  if (me.role !== 'FINANCE_MANAGER') {
     return NextResponse.json(
-      { error: 'Only finance or admin can reimburse claims' },
+      { error: 'Only a Finance Manager can disburse claims.' },
       { status: 403 },
     );
   }

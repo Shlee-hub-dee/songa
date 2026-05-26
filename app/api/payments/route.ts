@@ -63,10 +63,10 @@ export async function POST(req: NextRequest) {
       { status: 409 },
     );
   }
-  // The trip's officer attaches their own M-Pesa evidence pre-submission;
+  // The trip's owner attaches their own M-Pesa evidence pre-submission;
   // finance/admin can also attach (e.g. for back-office corrections).
   const isOwner = trip.userId === paidBy.id;
-  const isPrivileged = paidBy.role === 'FINANCE' || paidBy.role === 'ADMIN';
+  const isPrivileged = paidBy.role === 'FINANCE_MANAGER' || paidBy.role === 'ADMIN';
   if (!isOwner && !isPrivileged) {
     return NextResponse.json(
       { error: 'You can only attach payments to your own trips' },

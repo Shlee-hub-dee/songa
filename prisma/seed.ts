@@ -1,17 +1,23 @@
 /**
- * Songa seed — populates a development database with realistic data.
+ * Songa seed — Tupande organisational hierarchy.
  *
- *   1 admin + 2 managers + 8 field officers (4 per manager)
- *   3 rate history entries (KES 80 → 90 → 100)
- *   30 trips mixed across DRAFT/PENDING/APPROVED/REJECTED/REIMBURSED
- *   Matching M-Pesa payments with "QK"-prefixed references
- *   Audit log entries for each state transition
+ * Org tree:
+ *   1   ADMIN
+ *   1   FINANCE_MANAGER         (added so the disbursement flow is testable
+ *                                end-to-end in dev; the spec listed 31 users
+ *                                without one, but the demo isn't complete
+ *                                without finance to clear the queue)
+ *   2   REGIONAL_MANAGERs       (Rift Valley, Western) — do not log trips
+ *   4   AREA_COORDINATORs       (2 per region) — log trips
+ *   8   ZONE_SUPERVISORs        (2 per area) — log trips
+ *  16   TUPANDE_AGENTs          (2 per zone) — log trips
  *
- * Idempotent: wipes the tables it owns before re-seeding, so it's safe to
- * run repeatedly during development. Never run this against production.
+ * Plus rates, a realistic mix of trip statuses across the logging-allowed
+ * roles, M-Pesa payments, and audit log entries for each state transition.
+ *
+ * Idempotent: wipes the tables it owns before re-seeding. Never run this
+ * against production.
  */
-// Mirror Next.js env precedence so `npx prisma db seed` uses the same
-// DATABASE_URL the app does (.env.local wins, .env is the fallback).
 import { config as loadEnv } from 'dotenv';
 loadEnv({ path: '.env.local' });
 loadEnv();
@@ -64,7 +70,6 @@ function addMinutes(date: Date, minutes: number): Date {
   return new Date(date.getTime() + minutes * 60 * 1000);
 }
 
-/** Small Lat/Lng perturbation around a base point (in degrees). */
 function jitterCoord(base: number, spread = 0.05): number {
   return base + (Math.random() - 0.5) * spread * 2;
 }
@@ -72,8 +77,7 @@ function jitterCoord(base: number, spread = 0.05): number {
 // ─── Wipe ────────────────────────────────────────────────────────────────────
 
 async function wipe() {
-  // Order matters because of FK constraints. RESTRICT relations (RateConfig
-  // and MpesaPayment → User) require us to delete dependents first.
+  // FK constraint order: dependents first.
   await prisma.errorReport.deleteMany();
   await prisma.analyticsEvent.deleteMany();
   await prisma.auditLog.deleteMany();
@@ -83,17 +87,198 @@ async function wipe() {
   await prisma.user.deleteMany();
 }
 
+// ─── Org tree ────────────────────────────────────────────────────────────────
+
+type RegionSpec = {
+  name: string;          // "Rift Valley", "Western"
+  unitLabel: string;     // "Rift Valley Region"
+  rmEmail: string;
+  rmName: string;
+  rmPhone: string;
+  areas: AreaSpec[];
+};
+
+type AreaSpec = {
+  name: string;          // "Nakuru", "Eldoret"
+  unitLabel: string;     // "Nakuru Area"
+  acEmail: string;
+  acName: string;
+  acPhone: string;
+  zones: ZoneSpec[];
+  origin: { lat: number; lng: number };
+};
+
+type ZoneSpec = {
+  name: string;          // "Nakuru West"
+  unitLabel: string;     // "Nakuru West Zone"
+  zsEmail: string;
+  zsName: string;
+  zsPhone: string;
+  agents: AgentSpec[];
+};
+
+type AgentSpec = { email: string; name: string; phone: string };
+
+const ORG: RegionSpec[] = [
+  {
+    name: 'Rift Valley',
+    unitLabel: 'Rift Valley Region',
+    rmEmail: 'david.kiprop@tupande.dev',
+    rmName: 'David Kiprop',
+    rmPhone: '+254700001000',
+    areas: [
+      {
+        name: 'Nakuru',
+        unitLabel: 'Nakuru Area',
+        acEmail: 'mercy.wairimu@tupande.dev',
+        acName: 'Mercy Wairimu',
+        acPhone: '+254700002001',
+        origin: { lat: -0.3, lng: 36.08 },
+        zones: [
+          {
+            name: 'Nakuru West',
+            unitLabel: 'Nakuru West Zone',
+            zsEmail: 'peter.macharia@tupande.dev',
+            zsName: 'Peter Macharia',
+            zsPhone: '+254700003001',
+            agents: [
+              { email: 'john.kamau@tupande.dev', name: 'John Kamau', phone: '+254712100001' },
+              { email: 'faith.nyambura@tupande.dev', name: 'Faith Nyambura', phone: '+254712100002' },
+            ],
+          },
+          {
+            name: 'Nakuru East',
+            unitLabel: 'Nakuru East Zone',
+            zsEmail: 'sarah.chebet@tupande.dev',
+            zsName: 'Sarah Chebet',
+            zsPhone: '+254700003002',
+            agents: [
+              { email: 'paul.mwangi@tupande.dev', name: 'Paul Mwangi', phone: '+254712100003' },
+              { email: 'lillian.wambui@tupande.dev', name: 'Lillian Wambui', phone: '+254712100004' },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'Eldoret',
+        unitLabel: 'Eldoret Area',
+        acEmail: 'samuel.kibet@tupande.dev',
+        acName: 'Samuel Kibet',
+        acPhone: '+254700002002',
+        origin: { lat: 0.52, lng: 35.27 },
+        zones: [
+          {
+            name: 'Eldoret South',
+            unitLabel: 'Eldoret South Zone',
+            zsEmail: 'esther.wanjiru@tupande.dev',
+            zsName: 'Esther Wanjiru',
+            zsPhone: '+254700003003',
+            agents: [
+              { email: 'grace.jelagat@tupande.dev', name: 'Grace Jelagat', phone: '+254712200001' },
+              { email: 'daniel.rotich@tupande.dev', name: 'Daniel Rotich', phone: '+254712200002' },
+            ],
+          },
+          {
+            name: 'Eldoret North',
+            unitLabel: 'Eldoret North Zone',
+            zsEmail: 'philip.langat@tupande.dev',
+            zsName: 'Philip Langat',
+            zsPhone: '+254700003004',
+            agents: [
+              { email: 'ruth.chepkurui@tupande.dev', name: 'Ruth Chepkurui', phone: '+254712200003' },
+              { email: 'ben.kipruto@tupande.dev', name: 'Ben Kipruto', phone: '+254712200004' },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    name: 'Western',
+    unitLabel: 'Western Region',
+    rmEmail: 'agnes.musungu@tupande.dev',
+    rmName: 'Agnes Musungu',
+    rmPhone: '+254700001001',
+    areas: [
+      {
+        name: 'Kakamega',
+        unitLabel: 'Kakamega Area',
+        acEmail: 'george.shikuku@tupande.dev',
+        acName: 'George Shikuku',
+        acPhone: '+254700002003',
+        origin: { lat: 0.28, lng: 34.75 },
+        zones: [
+          {
+            name: 'Kakamega South',
+            unitLabel: 'Kakamega South Zone',
+            zsEmail: 'lydia.akinyi@tupande.dev',
+            zsName: 'Lydia Akinyi',
+            zsPhone: '+254700003005',
+            agents: [
+              { email: 'mary.nafula@tupande.dev', name: 'Mary Nafula', phone: '+254712300001' },
+              { email: 'samuel.barasa@tupande.dev', name: 'Samuel Barasa', phone: '+254712300002' },
+            ],
+          },
+          {
+            name: 'Kakamega North',
+            unitLabel: 'Kakamega North Zone',
+            zsEmail: 'patrick.indakwa@tupande.dev',
+            zsName: 'Patrick Indakwa',
+            zsPhone: '+254700003006',
+            agents: [
+              { email: 'jane.amukune@tupande.dev', name: 'Jane Amukune', phone: '+254712300003' },
+              { email: 'joseph.lugado@tupande.dev', name: 'Joseph Lugado', phone: '+254712300004' },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'Bungoma',
+        unitLabel: 'Bungoma Area',
+        acEmail: 'caroline.makokha@tupande.dev',
+        acName: 'Caroline Makokha',
+        acPhone: '+254700002004',
+        origin: { lat: 0.57, lng: 34.56 },
+        zones: [
+          {
+            name: 'Bungoma East',
+            unitLabel: 'Bungoma East Zone',
+            zsEmail: 'kevin.simiyu@tupande.dev',
+            zsName: 'Kevin Simiyu',
+            zsPhone: '+254700003007',
+            agents: [
+              { email: 'esther.naliaka@tupande.dev', name: 'Esther Naliaka', phone: '+254712400001' },
+              { email: 'collins.wafula@tupande.dev', name: 'Collins Wafula', phone: '+254712400002' },
+            ],
+          },
+          {
+            name: 'Bungoma West',
+            unitLabel: 'Bungoma West Zone',
+            zsEmail: 'janet.nasimiyu@tupande.dev',
+            zsName: 'Janet Nasimiyu',
+            zsPhone: '+254700003008',
+            agents: [
+              { email: 'henry.wekesa@tupande.dev', name: 'Henry Wekesa', phone: '+254712400003' },
+              { email: 'lilian.namalwa@tupande.dev', name: 'Lilian Namalwa', phone: '+254712400004' },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+];
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log('🧹 Wiping existing seed data…');
+  console.log('Wiping existing seed data...');
   await wipe();
 
-  // ── Users ──
-  console.log('👥 Creating users…');
+  // 1. Admin (org-wide; not pinned to a region)
+  console.log('Creating users: 1 admin, 1 finance manager, 2 RM, 4 AC, 8 ZS, 16 TA...');
   const admin = await prisma.user.create({
     data: {
-      email: 'admin@songa.dev',
+      email: 'admin@tupande.dev',
       name: 'Naomi Otieno',
       phone: '+254700000001',
       role: 'ADMIN',
@@ -102,75 +287,106 @@ async function main() {
     },
   });
 
-  const managers = await Promise.all([
-    prisma.user.create({
+  // 2. Finance manager (org-wide). RMs report up to admin; finance is a peer.
+  const finance = await prisma.user.create({
+    data: {
+      email: 'finance@tupande.dev',
+      name: 'Joyce Mutembei',
+      phone: '+254700000002',
+      role: 'FINANCE_MANAGER',
+      region: 'HQ Nairobi',
+      lastLoginAt: daysAgo(1),
+    },
+  });
+
+  type AgentRow = {
+    id: string;
+    role: 'TUPANDE_AGENT' | 'ZONE_SUPERVISOR' | 'AREA_COORDINATOR';
+    region: string;
+    areaOrigin: { lat: number; lng: number };
+  };
+
+  const allLoggers: AgentRow[] = [];
+  // approverFor[loggerId] = the direct manager id (for picking realistic approvers later)
+  const approverFor = new Map<string, string>();
+
+  for (const region of ORG) {
+    const rm = await prisma.user.create({
       data: {
-        email: 'david.kiprop@songa.dev',
-        name: 'David Kiprop',
-        phone: '+254700000010',
-        role: 'MANAGER',
-        region: 'Nakuru West',
+        email: region.rmEmail,
+        name: region.rmName,
+        phone: region.rmPhone,
+        role: 'REGIONAL_MANAGER',
+        organisationalUnit: region.unitLabel,
+        unitLevel: 'REGION',
+        region: region.name,
+        managerId: admin.id,
         lastLoginAt: daysAgo(2),
       },
-    }),
-    prisma.user.create({
-      data: {
-        email: 'esther.wanjiru@songa.dev',
-        name: 'Esther Wanjiru',
-        phone: '+254700000011',
-        role: 'MANAGER',
-        region: 'Eldoret South',
-        lastLoginAt: daysAgo(1),
-      },
-    }),
-  ]);
-  const [nakuruMgr, eldoretMgr] = managers;
+    });
 
-  // 4 officers per manager
-  const nakuruOfficers = await Promise.all(
-    [
-      ['peter.macharia@songa.dev', 'Peter Macharia', '+254712100001'],
-      ['mercy.chebet@songa.dev', 'Mercy Chebet', '+254712100002'],
-      ['john.kamau@songa.dev', 'John Kamau', '+254712100003'],
-      ['faith.nyambura@songa.dev', 'Faith Nyambura', '+254712100004'],
-    ].map(([email, name, phone]) =>
-      prisma.user.create({
+    for (const area of region.areas) {
+      const ac = await prisma.user.create({
         data: {
-          email,
-          name,
-          phone,
-          role: 'FIELD_OFFICER',
-          region: 'Nakuru West',
-          managerId: nakuruMgr.id,
-          lastLoginAt: daysAgo(Math.floor(Math.random() * 5) + 1),
+          email: area.acEmail,
+          name: area.acName,
+          phone: area.acPhone,
+          role: 'AREA_COORDINATOR',
+          organisationalUnit: area.unitLabel,
+          unitLevel: 'AREA',
+          region: region.name,
+          managerId: rm.id,
+          lastLoginAt: daysAgo(1),
         },
-      }),
-    ),
-  );
+      });
+      allLoggers.push({ id: ac.id, role: 'AREA_COORDINATOR', region: region.name, areaOrigin: area.origin });
+      approverFor.set(ac.id, rm.id);
 
-  const eldoretOfficers = await Promise.all(
-    [
-      ['samuel.kibet@songa.dev', 'Samuel Kibet', '+254712200001'],
-      ['grace.jelagat@songa.dev', 'Grace Jelagat', '+254712200002'],
-      ['daniel.rotich@songa.dev', 'Daniel Rotich', '+254712200003'],
-      ['ruth.chepkurui@songa.dev', 'Ruth Chepkurui', '+254712200004'],
-    ].map(([email, name, phone]) =>
-      prisma.user.create({
-        data: {
-          email,
-          name,
-          phone,
-          role: 'FIELD_OFFICER',
-          region: 'Eldoret South',
-          managerId: eldoretMgr.id,
-          lastLoginAt: daysAgo(Math.floor(Math.random() * 5) + 1),
-        },
-      }),
-    ),
-  );
+      for (const zone of area.zones) {
+        const zs = await prisma.user.create({
+          data: {
+            email: zone.zsEmail,
+            name: zone.zsName,
+            phone: zone.zsPhone,
+            role: 'ZONE_SUPERVISOR',
+            organisationalUnit: zone.unitLabel,
+            unitLevel: 'ZONE',
+            region: region.name,
+            managerId: ac.id,
+            lastLoginAt: daysAgo(Math.floor(Math.random() * 3) + 1),
+          },
+        });
+        allLoggers.push({ id: zs.id, role: 'ZONE_SUPERVISOR', region: region.name, areaOrigin: area.origin });
+        approverFor.set(zs.id, ac.id);
+
+        for (const agent of zone.agents) {
+          const ta = await prisma.user.create({
+            data: {
+              email: agent.email,
+              name: agent.name,
+              phone: agent.phone,
+              role: 'TUPANDE_AGENT',
+              organisationalUnit: zone.unitLabel,
+              unitLevel: 'ZONE',
+              region: region.name,
+              managerId: zs.id,
+              lastLoginAt: daysAgo(Math.floor(Math.random() * 5) + 1),
+            },
+          });
+          allLoggers.push({
+            id: ta.id,
+            role: 'TUPANDE_AGENT',
+            region: region.name,
+            areaOrigin: area.origin,
+          });
+          approverFor.set(ta.id, zs.id);
+        }
+      }
+    }
+  }
 
   // ── Rate history ──
-  console.log('💰 Creating rate history…');
+  console.log('Creating rate history...');
   const [rate80, rate90, rate100] = await Promise.all([
     prisma.rateConfig.create({
       data: {
@@ -197,8 +413,11 @@ async function main() {
       },
     }),
   ]);
+  const ratesDesc = [rate100, rate90, rate80];
+  function resolveRateFor(startTime: Date) {
+    return ratesDesc.find((r) => r.effectiveDate <= startTime) ?? rate80;
+  }
 
-  // Audit the rate changes.
   await prisma.auditLog.createMany({
     data: [rate80, rate90, rate100].map((r) => ({
       actorId: admin.id,
@@ -210,14 +429,11 @@ async function main() {
   });
 
   // ── Trips ──
-  console.log('🚗 Creating 30 trips…');
+  console.log('Creating trips for logging-allowed users...');
 
-  // Status distribution (sums to 30):
-  //   6  DRAFT (2 of them already carry a payment)
-  //   8  PENDING
-  //   8  APPROVED
-  //   4  REJECTED
-  //   4  REIMBURSED
+  // 30 trips spread across DRAFT/PENDING/APPROVED/REJECTED/REIMBURSED.
+  // Submitters are picked from allLoggers (AGENT/ZS/AC); approvers come from
+  // approverFor so the manager chain is consistent with the API rules.
   const statusPlan: { status: 'DRAFT' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'REIMBURSED'; hasPayment: boolean }[] = [
     ...Array(4).fill({ status: 'DRAFT' as const, hasPayment: false }),
     ...Array(2).fill({ status: 'DRAFT' as const, hasPayment: true }),
@@ -226,12 +442,6 @@ async function main() {
     ...Array(4).fill({ status: 'REJECTED' as const, hasPayment: true }),
     ...Array(4).fill({ status: 'REIMBURSED' as const, hasPayment: true }),
   ];
-
-  // Coordinates roughly centred on each manager's region.
-  const REGION_ORIGINS = {
-    'Nakuru West': { lat: -0.30, lng: 36.08 },
-    'Eldoret South': { lat: 0.52, lng: 35.27 },
-  };
 
   const TRIP_TYPES = [
     'FARMER_ENROLLMENT',
@@ -272,18 +482,7 @@ async function main() {
     'GPS trail looks incomplete; consider re-recording.',
   ];
 
-  // For deterministic rate resolution we sort rates by effectiveDate descending
-  // (mirroring the production query) and pick the first one whose date is on
-  // or before the trip's startTime.
-  const ratesDesc = [rate100, rate90, rate80]; // already in descending effective order
-
-  function resolveRateFor(startTime: Date) {
-    return ratesDesc.find((r) => r.effectiveDate <= startTime) ?? rate80;
-  }
-
-  const allOfficers = [...nakuruOfficers, ...eldoretOfficers];
-
-  // Shuffle the plan so officers aren't biased toward one status.
+  // Shuffle plan so no single submitter ends up only with REIMBURSED, etc.
   for (let i = statusPlan.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [statusPlan[i], statusPlan[j]] = [statusPlan[j], statusPlan[i]];
@@ -292,15 +491,13 @@ async function main() {
   let tripIdx = 0;
   for (const slot of statusPlan) {
     tripIdx += 1;
-    const officer = allOfficers[tripIdx % allOfficers.length];
-    const manager = officer.managerId === nakuruMgr.id ? nakuruMgr : eldoretMgr;
-    const origin = REGION_ORIGINS[officer.region as keyof typeof REGION_ORIGINS];
+    const submitter = allLoggers[tripIdx % allLoggers.length];
+    const approverId = approverFor.get(submitter.id) ?? admin.id;
 
     const type = pick(TRIP_TYPES);
-    const notesPool = NOTES_BY_TYPE[type];
-    const notes = pick(notesPool);
+    const notes = pick(NOTES_BY_TYPE[type]);
+    const origin = submitter.areaOrigin;
 
-    // Trip start window: 0–150 days ago, weighted slightly toward recent.
     const startTime = daysAgo(Math.floor(Math.random() * 150) + 1);
     const durationMinutes = Math.floor(randomBetween(25, 180));
     const endTime = addMinutes(startTime, durationMinutes);
@@ -312,8 +509,6 @@ async function main() {
 
     const gpsPointCount = Math.floor(randomBetween(18, 90));
     const gpsAccuracyM = Number(randomBetween(4, 22).toFixed(2));
-
-    // Sample 6 waypoints for the gpsTrail snapshot.
     const trail = Array.from({ length: 6 }).map((_, i) => ({
       lat: jitterCoord(origin.lat, 0.08),
       lng: jitterCoord(origin.lng, 0.08),
@@ -321,7 +516,6 @@ async function main() {
       accuracy: Number(randomBetween(5, 25).toFixed(1)),
     }));
 
-    // Workflow timestamps
     const submittedAt =
       slot.status === 'DRAFT' ? null : addHours(endTime, randomBetween(0.5, 6));
     const approvedAt =
@@ -333,12 +527,12 @@ async function main() {
     const reimbursedAt =
       slot.status === 'REIMBURSED' ? addHours(approvedAt!, randomBetween(4, 48)) : null;
 
-    const approverId = approvedAt || rejectedAt ? manager.id : null;
     const rejectionReason = slot.status === 'REJECTED' ? pick(REJECTION_REASONS) : null;
+    const recordedApproverId = approvedAt || rejectedAt ? approverId : null;
 
     const trip = await prisma.trip.create({
       data: {
-        userId: officer.id,
+        userId: submitter.id,
         type,
         notes,
         startTime,
@@ -359,30 +553,32 @@ async function main() {
         approvedAt,
         rejectedAt,
         reimbursedAt,
-        approverId,
+        approverId: recordedApproverId,
         rejectionReason,
       },
     });
 
-    // M-Pesa payment (when applicable)
     if (slot.hasPayment) {
-      // Reimbursement is paid by admin/finance; pre-reimburse payments are
-      // recorded by the officer themselves when attaching the screenshot.
-      const paidBy = slot.status === 'REIMBURSED' ? admin : officer;
+      // For REIMBURSED trips finance is the payer (disbursement); otherwise
+      // it's the trip owner attaching their own M-Pesa receipt as evidence.
+      const paidById = slot.status === 'REIMBURSED' ? finance.id : submitter.id;
       const paidAt =
         reimbursedAt ?? approvedAt ?? submittedAt ?? addHours(endTime, 1);
+
+      // Find the submitter's phone — picked from the org tree we built earlier.
+      const submitterPhone = await prisma.user.findUnique({
+        where: { id: submitter.id },
+        select: { phone: true },
+      });
 
       await prisma.mpesaPayment.create({
         data: {
           tripId: trip.id,
           mpesaRef: mpesaRef(),
-          // Real-world: M-Pesa amount often exactly matches the claim.
           amountKes,
-          recipientPhone: officer.phone ?? '+254700000000',
-          paidById: paidBy.id,
+          recipientPhone: submitterPhone?.phone ?? '+254700000000',
+          paidById,
           paidAt,
-          // Screenshot path follows the storage layout used by upload-url:
-          // <tripId>/<uuid>.<ext>. Half of payments include one.
           screenshotPath:
             Math.random() < 0.6
               ? `${trip.id}/${trip.id}-screenshot.jpg`
@@ -391,20 +587,20 @@ async function main() {
       });
     }
 
-    // Audit trail — one row per state transition the trip went through.
+    // Audit per state transition.
     const auditRows: {
       actorId: string;
       action: 'CREATED' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'REIMBURSED';
       createdAt: Date;
-    }[] = [{ actorId: officer.id, action: 'CREATED', createdAt: trip.createdAt }];
+    }[] = [{ actorId: submitter.id, action: 'CREATED', createdAt: trip.createdAt }];
     if (submittedAt)
-      auditRows.push({ actorId: officer.id, action: 'SUBMITTED', createdAt: submittedAt });
+      auditRows.push({ actorId: submitter.id, action: 'SUBMITTED', createdAt: submittedAt });
     if (approvedAt)
-      auditRows.push({ actorId: manager.id, action: 'APPROVED', createdAt: approvedAt });
+      auditRows.push({ actorId: approverId, action: 'APPROVED', createdAt: approvedAt });
     if (rejectedAt)
-      auditRows.push({ actorId: manager.id, action: 'REJECTED', createdAt: rejectedAt });
+      auditRows.push({ actorId: approverId, action: 'REJECTED', createdAt: rejectedAt });
     if (reimbursedAt)
-      auditRows.push({ actorId: admin.id, action: 'REIMBURSED', createdAt: reimbursedAt });
+      auditRows.push({ actorId: finance.id, action: 'REIMBURSED', createdAt: reimbursedAt });
 
     await prisma.auditLog.createMany({
       data: auditRows.map((r) => ({
@@ -418,10 +614,11 @@ async function main() {
     });
   }
 
-  // ── A handful of page-visit analytics so the analytics dashboard isn't empty ──
-  console.log('📈 Sprinkling analytics events…');
+  // ── Analytics events so the analytics page isn't empty ──
+  console.log('Sprinkling analytics events...');
+  const allActiveUsers = await prisma.user.findMany({ select: { id: true } });
   const events: { userId: string; sessionId: string; eventName: string; createdAt: Date }[] = [];
-  for (const u of [...allOfficers, ...managers, admin]) {
+  for (const u of allActiveUsers) {
     const sessions = Math.floor(Math.random() * 3) + 1;
     for (let s = 0; s < sessions; s++) {
       events.push({
@@ -434,15 +631,17 @@ async function main() {
   }
   await prisma.analyticsEvent.createMany({ data: events });
 
-  console.log('\n✅ Seed complete.');
-  console.log(`   1 admin · 2 managers · ${allOfficers.length} officers`);
+  console.log('\nSeed complete.');
+  console.log(
+    `   1 admin · 1 finance · 2 regional · 4 area · 8 zone · 16 agents = ${allActiveUsers.length} users`,
+  );
   console.log(`   ${statusPlan.length} trips · ${usedRefs.size} M-Pesa payments`);
   console.log('   Rate history: KES 80 → 90 → 100');
 }
 
 main()
   .catch((err) => {
-    console.error('❌ Seed failed:', err);
+    console.error('Seed failed:', err);
     process.exit(1);
   })
   .finally(() => prisma.$disconnect());

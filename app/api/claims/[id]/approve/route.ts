@@ -3,6 +3,7 @@ import { Prisma } from '@/lib/generated/prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getAuthedUser } from '@/lib/supabase-server';
 import { broadcast, officerTopic } from '@/lib/realtime';
+import { expectedApproverRole, type Role } from '@/lib/roles';
 
 export const runtime = 'nodejs';
 
@@ -22,9 +23,6 @@ export async function PATCH(
   if (!me || !me.isActive) {
     return NextResponse.json({ error: 'User not provisioned' }, { status: 403 });
   }
-  if (me.role !== 'MANAGER' && me.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'Only managers can approve trips' }, { status: 403 });
-  }
 
   const trip = await prisma.trip.findUnique({
     where: { id: params.id },
@@ -32,19 +30,53 @@ export async function PATCH(
       id: true,
       status: true,
       userId: true,
-      user: { select: { managerId: true } },
+      user: { select: { id: true, role: true, managerId: true } },
     },
   });
   if (!trip) {
     return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
   }
-  // Managers can only approve trips from their direct reports. Admins override.
-  if (me.role !== 'ADMIN' && trip.user.managerId !== me.id) {
+
+  // No user may approve their own trip — under any circumstance, including ADMIN.
+  if (trip.userId === me.id) {
     return NextResponse.json(
-      { error: 'You can only approve trips from your own team' },
+      { error: 'You cannot approve your own trip.' },
       { status: 403 },
     );
   }
+
+  // Direct-report rule: each approver only sees / acts on trips from their
+  // direct reports. ADMIN gets the same restriction so the chain is consistent.
+  if (trip.user.managerId !== me.id) {
+    return NextResponse.json(
+      { error: 'You can only approve trips from your direct reports.' },
+      { status: 403 },
+    );
+  }
+
+  // Role-tier rule: the submitter's role determines who is allowed to approve.
+  //   TUPANDE_AGENT    → ZONE_SUPERVISOR
+  //   ZONE_SUPERVISOR  → AREA_COORDINATOR
+  //   AREA_COORDINATOR → REGIONAL_MANAGER
+  //   REGIONAL_MANAGER → ADMIN (finance disburses separately)
+  const submitterRole = trip.user.role as Role;
+  const required = expectedApproverRole(submitterRole);
+  if (!required) {
+    return NextResponse.json(
+      { error: 'This role cannot submit trips for approval.' },
+      { status: 403 },
+    );
+  }
+  if (me.role !== required) {
+    return NextResponse.json(
+      {
+        error: `Only a ${required.replace(/_/g, ' ').toLowerCase()} can approve a ${submitterRole.replace(/_/g, ' ').toLowerCase()}'s trip.`,
+        code: 'WRONG_APPROVER_ROLE',
+      },
+      { status: 403 },
+    );
+  }
+
   if (trip.status !== 'PENDING') {
     return NextResponse.json(
       { error: `Trip is ${trip.status}; only PENDING trips can be approved` },

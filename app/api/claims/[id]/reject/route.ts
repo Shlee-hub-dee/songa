@@ -4,6 +4,7 @@ import { Prisma } from '@/lib/generated/prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getAuthedUser } from '@/lib/supabase-server';
 import { broadcast, officerTopic } from '@/lib/realtime';
+import { expectedApproverRole, type Role } from '@/lib/roles';
 
 export const runtime = 'nodejs';
 
@@ -27,9 +28,6 @@ export async function PATCH(
   if (!me || !me.isActive) {
     return NextResponse.json({ error: 'User not provisioned' }, { status: 403 });
   }
-  if (me.role !== 'MANAGER' && me.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'Only managers can reject trips' }, { status: 403 });
-  }
 
   let body: z.infer<typeof BodySchema>;
   try {
@@ -46,18 +44,45 @@ export async function PATCH(
       id: true,
       status: true,
       userId: true,
-      user: { select: { managerId: true } },
+      user: { select: { id: true, role: true, managerId: true } },
     },
   });
   if (!trip) {
     return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
   }
-  if (me.role !== 'ADMIN' && trip.user.managerId !== me.id) {
+
+  // Same three rules as approve: no self-action, direct-report only, correct
+  // approver role tier.
+  if (trip.userId === me.id) {
     return NextResponse.json(
-      { error: 'You can only reject trips from your own team' },
+      { error: 'You cannot reject your own trip.' },
       { status: 403 },
     );
   }
+  if (trip.user.managerId !== me.id) {
+    return NextResponse.json(
+      { error: 'You can only reject trips from your direct reports.' },
+      { status: 403 },
+    );
+  }
+  const submitterRole = trip.user.role as Role;
+  const required = expectedApproverRole(submitterRole);
+  if (!required) {
+    return NextResponse.json(
+      { error: 'This role cannot submit trips for approval.' },
+      { status: 403 },
+    );
+  }
+  if (me.role !== required) {
+    return NextResponse.json(
+      {
+        error: `Only a ${required.replace(/_/g, ' ').toLowerCase()} can reject a ${submitterRole.replace(/_/g, ' ').toLowerCase()}'s trip.`,
+        code: 'WRONG_APPROVER_ROLE',
+      },
+      { status: 403 },
+    );
+  }
+
   if (trip.status !== 'PENDING') {
     return NextResponse.json(
       { error: `Trip is ${trip.status}; only PENDING trips can be rejected` },

@@ -36,7 +36,7 @@ export default async function FinancePage({
     select: { id: true, role: true, isActive: true },
   });
   if (!me || !me.isActive) redirect('/login');
-  if (me.role !== 'FINANCE' && me.role !== 'ADMIN') redirect('/dashboard');
+  if (me.role !== 'FINANCE_MANAGER' && me.role !== 'ADMIN') redirect('/dashboard');
 
   const from = parseDate(searchParams.from);
   const to = parseDate(searchParams.to);
@@ -79,10 +79,14 @@ export default async function FinancePage({
       },
       orderBy: { approvedAt: 'asc' },
     }),
-    // Only officers who have at least one approved trip — keeps the dropdown
-    // useful for a finance team that processes hundreds of users.
+    // Anyone who can log trips (Agent / Supervisor / Coordinator) and has at
+    // least one approved claim — keeps the dropdown useful for a finance team
+    // that processes hundreds of users.
     prisma.user.findMany({
-      where: { role: 'FIELD_OFFICER', trips: { some: { status: 'APPROVED' } } },
+      where: {
+        role: { in: ['TUPANDE_AGENT', 'ZONE_SUPERVISOR', 'AREA_COORDINATOR'] },
+        trips: { some: { status: 'APPROVED' } },
+      },
       select: { id: true, name: true },
       orderBy: { name: 'asc' },
     }),

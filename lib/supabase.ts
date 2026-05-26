@@ -13,4 +13,5 @@ if (!supabaseUrl || !supabaseAnonKey) {
 // so that middleware and Server Components can read it.
 export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
 
-export type SongaRole = 'FIELD_OFFICER' | 'MANAGER' | 'FINANCE' | 'ADMIN';
+// Kept for back-compat; the canonical role type lives in @/lib/roles.
+export type { Role as SongaRole } from '@/lib/roles';

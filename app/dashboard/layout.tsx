@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { prisma } from '@/lib/prisma';
 import { getAuthedUser } from '@/lib/supabase-server';
+import { ROLE_LABEL, type Role } from '@/lib/roles';
 import { Button } from '@/components/ui/button';
 
 // Sticky header for every /dashboard/* page. Shows the Songa wordmark, the
@@ -25,7 +26,7 @@ export default async function DashboardLayout({
   }
 
   const displayName = profile?.name ?? authUser?.email ?? '';
-  const roleLabel = ROLE_LABELS[profile?.role ?? ''] ?? '';
+  const roleLabel = profile?.role ? (ROLE_LABEL[profile.role as Role] ?? '') : '';
 
   return (
     <div className="min-h-screen bg-background">
@@ -79,10 +80,3 @@ export default async function DashboardLayout({
     </div>
   );
 }
-
-const ROLE_LABELS: Record<string, string> = {
-  FIELD_OFFICER: 'Officer',
-  MANAGER: 'Manager',
-  FINANCE: 'Finance',
-  ADMIN: 'Admin',
-};

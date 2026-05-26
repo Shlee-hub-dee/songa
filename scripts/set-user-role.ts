@@ -24,8 +24,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../lib/generated/prisma/client';
 import { normalizeDbUrl } from '../lib/db-url';
 
-type Role = 'FIELD_OFFICER' | 'MANAGER' | 'FINANCE' | 'ADMIN';
-const ROLES: Role[] = ['FIELD_OFFICER', 'MANAGER', 'FINANCE', 'ADMIN'];
+import { ALL_ROLES, type Role } from '../lib/roles';
 
 function parseArgs(argv: string[]): Record<string, string> {
   const out: Record<string, string> = {};
@@ -74,7 +73,7 @@ async function main() {
 
   if (!email) die('Missing --email');
   if (!name) die('Missing --name (used when creating the row)');
-  if (!ROLES.includes(role)) die(`--role must be one of ${ROLES.join(', ')}`);
+  if (!ALL_ROLES.includes(role)) die(`--role must be one of ${ALL_ROLES.join(', ')}`);
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

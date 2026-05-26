@@ -57,7 +57,16 @@ export default async function AnalyticsPage() {
     select: { id: true, role: true, isActive: true },
   });
   if (!me || !me.isActive) redirect('/login');
-  if (me.role !== 'MANAGER' && me.role !== 'ADMIN' && me.role !== 'FINANCE') {
+  // Analytics is available to all approvers + finance + admin (anyone above
+  // individual contributor in the hierarchy).
+  const ANALYTICS_ROLES = new Set([
+    'ZONE_SUPERVISOR',
+    'AREA_COORDINATOR',
+    'REGIONAL_MANAGER',
+    'FINANCE_MANAGER',
+    'ADMIN',
+  ]);
+  if (!ANALYTICS_ROLES.has(me.role)) {
     redirect('/dashboard');
   }
 

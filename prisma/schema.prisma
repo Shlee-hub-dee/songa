@@ -14,10 +14,18 @@ datasource db {
 // ── Enums ────────────────────────────────────────────────────────────────────
 
 enum Role {
-  FIELD_OFFICER
-  MANAGER
-  FINANCE
+  TUPANDE_AGENT
+  ZONE_SUPERVISOR
+  AREA_COORDINATOR
+  REGIONAL_MANAGER
+  FINANCE_MANAGER
   ADMIN
+}
+
+enum UnitLevel {
+  ZONE
+  AREA
+  REGION
 }
 
 enum TripStatus {
@@ -66,12 +74,18 @@ model User {
   email          String    @unique
   phone          String?   @unique
   name           String
-  role           Role      @default(FIELD_OFFICER)
-  // Self-referential manager hierarchy. Managers see trips from their reports.
+  role           Role      @default(TUPANDE_AGENT)
+  // Self-referential manager hierarchy. Each approver only sees trips from their
+  // direct reports — the chain is enforced via this column at the API layer.
   managerId      String?   @map("manager_id")
   manager        User?     @relation("UserManager", fields: [managerId], references: [id], onDelete: SetNull)
   reports        User[]    @relation("UserManager")
-  // Region/team metadata for filtering
+  // Tupande org structure: organisationalUnit is the human label
+  // (e.g. "Nakuru West Zone", "Rift Valley Region"); unitLevel positions the
+  // user in the hierarchy so the UI/queries can group correctly.
+  organisationalUnit String?    @map("organisational_unit")
+  unitLevel          UnitLevel? @map("unit_level")
+  // Legacy free-text region — kept for back-compat with existing filters.
   region         String?
   isActive       Boolean   @default(true) @map("is_active")
   lastLoginAt    DateTime? @map("last_login_at")

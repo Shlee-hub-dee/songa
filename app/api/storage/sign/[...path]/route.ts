@@ -50,7 +50,7 @@ export async function GET(
 
   const isOwner = trip.userId === me.id;
   const isManager = trip.user.managerId === me.id;
-  const isPrivileged = me.role === 'FINANCE' || me.role === 'ADMIN';
+  const isPrivileged = me.role === 'FINANCE_MANAGER' || me.role === 'ADMIN';
   if (!isOwner && !isManager && !isPrivileged) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
