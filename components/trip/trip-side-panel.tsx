@@ -203,7 +203,7 @@ export function TripSidePanel({
         onClick={onClose}
         className={cn(
           'fixed inset-0 z-40 bg-black/30 transition-opacity',
-          open ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0',
+          open ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0 invisible',
         )}
       />
 
@@ -212,9 +212,12 @@ export function TripSidePanel({
         role="dialog"
         aria-modal="true"
         aria-label="Trip detail"
+        aria-hidden={!open}
         className={cn(
           'fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col bg-card shadow-xl transition-transform duration-200',
-          open ? 'translate-x-0' : 'translate-x-full',
+          open
+            ? 'translate-x-0 pointer-events-auto'
+            : 'translate-x-full pointer-events-none invisible',
         )}
       >
         <header className="flex items-center justify-between gap-3 border-b px-4 py-3">

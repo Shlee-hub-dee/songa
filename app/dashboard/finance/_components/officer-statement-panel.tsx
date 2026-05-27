@@ -139,7 +139,7 @@ export function OfficerStatementPanel({
         onClick={onClose}
         className={cn(
           'fixed inset-0 z-40 bg-black/30 transition-opacity print:hidden',
-          open ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0',
+          open ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0 invisible',
         )}
       />
 
@@ -147,9 +147,12 @@ export function OfficerStatementPanel({
         role="dialog"
         aria-modal="true"
         aria-label="Officer statement"
+        aria-hidden={!open}
         className={cn(
           'fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col bg-card shadow-xl transition-transform duration-200 print:relative print:inset-auto print:w-full print:max-w-none print:shadow-none print:duration-0',
-          open ? 'translate-x-0' : 'translate-x-full',
+          open
+            ? 'translate-x-0 pointer-events-auto'
+            : 'translate-x-full pointer-events-none invisible print:visible',
         )}
       >
         <header className="flex items-center justify-between gap-3 border-b px-4 py-3 print:hidden">
