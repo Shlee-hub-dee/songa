@@ -48,55 +48,65 @@ export async function GET(
     return NextResponse.json({ error: 'Officer not found' }, { status: 404 });
   }
 
-  const [trips, payments] = await Promise.all([
-    prisma.trip.findMany({
-      where: { userId: params.officerId },
-      select: {
-        id: true,
-        type: true,
-        status: true,
-        distanceKm: true,
-        amountKes: true,
-        startTime: true,
-        submittedAt: true,
-        approvedAt: true,
-        reimbursedAt: true,
-        rejectedAt: true,
-      },
-      orderBy: { startTime: 'desc' },
-    }),
-    // Payments where this officer is either the payer (their own M-Pesa fare
-    // evidence) or the recipient (finance disbursement). The schema only has
-    // paidById, but the recipient is the trip owner, so we resolve "received"
-    // payments by joining through the trip.
-    prisma.mpesaPayment.findMany({
-      where: {
-        OR: [
-          { paidById: params.officerId },
-          { trip: { userId: params.officerId } },
-        ],
-      },
-      select: {
-        id: true,
-        mpesaRef: true,
-        amountKes: true,
-        recipientPhone: true,
-        paidAt: true,
-        paidById: true,
-        trip: { select: { id: true, userId: true } },
-      },
-      orderBy: { paidAt: 'desc' },
-    }),
-  ]);
+  const [trips, payments, tripCountTotal, outstandingAgg, lifetimeAgg, pendingCountTotal] =
+    await Promise.all([
+      prisma.trip.findMany({
+        where: { userId: params.officerId },
+        select: {
+          id: true,
+          type: true,
+          status: true,
+          distanceKm: true,
+          amountKes: true,
+          startTime: true,
+          submittedAt: true,
+          approvedAt: true,
+          reimbursedAt: true,
+          rejectedAt: true,
+        },
+        orderBy: { startTime: 'desc' },
+        // Cap the per-officer statement so a long-tenured officer with
+        // thousands of trips can still load in reasonable time. Aggregates
+        // below cover the lifetime totals from the DB side, so the cap only
+        // affects the per-row trip list (which is what we'd paginate anyway).
+        take: 500,
+      }),
+      prisma.mpesaPayment.findMany({
+        where: {
+          OR: [
+            { paidById: params.officerId },
+            { trip: { userId: params.officerId } },
+          ],
+        },
+        select: {
+          id: true,
+          mpesaRef: true,
+          amountKes: true,
+          recipientPhone: true,
+          paidAt: true,
+          paidById: true,
+          trip: { select: { id: true, userId: true } },
+        },
+        orderBy: { paidAt: 'desc' },
+        take: 500,
+      }),
+      prisma.trip.count({ where: { userId: params.officerId } }),
+      prisma.trip.aggregate({
+        where: { userId: params.officerId, status: 'APPROVED' },
+        _sum: { amountKes: true },
+        _count: { _all: true },
+      }),
+      prisma.trip.aggregate({
+        where: { userId: params.officerId, status: 'REIMBURSED' },
+        _sum: { amountKes: true },
+      }),
+      prisma.trip.count({
+        where: { userId: params.officerId, status: 'APPROVED' },
+      }),
+    ]);
 
-  const outstandingTrips = trips.filter((t) => t.status === 'APPROVED');
-  const outstandingBalance = outstandingTrips.reduce(
-    (s, t) => s + Number(t.amountKes),
-    0,
-  );
-  const lifetimeReimbursed = trips
-    .filter((t) => t.status === 'REIMBURSED')
-    .reduce((s, t) => s + Number(t.amountKes), 0);
+  const outstandingBalance = Number(outstandingAgg._sum.amountKes ?? 0);
+  const lifetimeReimbursed = Number(lifetimeAgg._sum.amountKes ?? 0);
 
   return NextResponse.json({
     officer: {
@@ -111,8 +121,8 @@ export async function GET(
     summary: {
       outstandingBalance,
       lifetimeReimbursed,
-      totalTrips: trips.length,
-      pendingTripsCount: outstandingTrips.length,
+      totalTrips: tripCountTotal,
+      pendingTripsCount: pendingCountTotal,
     },
     trips: trips.map((t) => ({
       id: t.id,

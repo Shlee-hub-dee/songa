@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
-import { getAuthedUser } from '@/lib/supabase-server';
+import { getCurrentUser } from '@/lib/current-user';
 import { TRIP_TYPE_LABEL, type TripType } from '@/lib/active-trip';
 import { ROLE_LABEL, type Role } from '@/lib/roles';
 import { BlockedNotice, parseBlockedReason } from '@/components/nav/blocked-notice';
@@ -26,21 +26,7 @@ function startOfMonth(): Date {
 }
 
 export default async function ApprovalsPage({ searchParams }: Props) {
-  const authUser = await getAuthedUser();
-  if (!authUser) redirect('/login');
-
-  const me = await prisma.user.findUnique({
-    where: { supabaseUserId: authUser.id },
-    select: {
-      id: true,
-      name: true,
-      role: true,
-      isActive: true,
-      organisationalUnit: true,
-      unitLevel: true,
-      managerId: true,
-    },
-  });
+  const me = await getCurrentUser();
   if (!me || !me.isActive) redirect('/login');
 
   const role = me.role as Role;
@@ -48,30 +34,6 @@ export default async function ApprovalsPage({ searchParams }: Props) {
   // every other non-approver role gets bounced.
   if (role !== 'ADMIN' && !APPROVER_ROLES.includes(role)) {
     redirect('/dashboard');
-  }
-
-  // ── Walk the manager chain (max 3 hops) to build the org breadcrumb ──
-  // Each step climbs one manager; the order is bottom→top, so we reverse at
-  // the end to render Region → Area → Zone. ZS sees three parts, AC two, RM
-  // one. Admin sees nothing relevant — they get a generic "All Reports" crumb.
-  const crumbParts: string[] = [];
-  let cursor: { id: string; managerId: string | null; organisationalUnit: string | null } | null = {
-    id: me.id,
-    managerId: me.managerId,
-    organisationalUnit: me.organisationalUnit,
-  };
-  let safety = 0;
-  while (cursor && safety < 5) {
-    if (cursor.organisationalUnit) crumbParts.unshift(cursor.organisationalUnit);
-    if (!cursor.managerId) break;
-    cursor = await prisma.user.findUnique({
-      where: { id: cursor.managerId },
-      select: { id: true, managerId: true, organisationalUnit: true },
-    });
-    safety++;
-  }
-  if (role === 'ADMIN' && crumbParts.length === 0) {
-    crumbParts.push('All organisational units');
   }
 
   // ── Data fetches in parallel ──
@@ -90,6 +52,7 @@ export default async function ApprovalsPage({ searchParams }: Props) {
     monthAggReimbursed,
     monthAggPending,
     monthKmAgg,
+    ancestors,
   ] = await Promise.all([
     prisma.trip.findMany({
       where: { status: 'PENDING', ...directReportFilter },
@@ -106,6 +69,7 @@ export default async function ApprovalsPage({ searchParams }: Props) {
         payment: { select: { mpesaRef: true, amountKes: true, screenshotPath: true } },
       },
       orderBy: { submittedAt: 'asc' },
+      take: 500,
     }),
     prisma.trip.findMany({
       where: directReportFilter,
@@ -164,7 +128,37 @@ export default async function ApprovalsPage({ searchParams }: Props) {
       where: { ...directReportFilter, startTime: { gte: monthStart } },
       _sum: { distanceKm: true },
     }),
+    // Walk the manager chain in ONE query via a recursive CTE instead of the
+    // up-to-5 sequential findUnique calls we used to do. Returns ancestors
+    // bottom→top including `me`. Cast all fields to text so the row shape
+    // is stable regardless of cuid/uuid id types.
+    prisma.$queryRaw<
+      { id: string; manager_id: string | null; organisational_unit: string | null; depth: number }[]
+    >`
+      WITH RECURSIVE chain AS (
+        SELECT id, manager_id, organisational_unit, 0 AS depth
+        FROM users
+        WHERE id = ${me.id}
+        UNION ALL
+        SELECT u.id, u.manager_id, u.organisational_unit, c.depth + 1
+        FROM users u
+        JOIN chain c ON c.manager_id = u.id
+        WHERE c.depth < 5
+      )
+      SELECT id, manager_id, organisational_unit, depth FROM chain ORDER BY depth ASC
+    `,
   ]);
+
+  // Build the breadcrumb (top→bottom: Region → Area → Zone). Ancestors come
+  // back bottom-up so we reverse before mapping.
+  const crumbParts = ancestors
+    .slice()
+    .reverse()
+    .map((a) => a.organisational_unit)
+    .filter((u): u is string => Boolean(u));
+  if (role === 'ADMIN' && crumbParts.length === 0) {
+    crumbParts.push('All organisational units');
+  }
 
   // Shape the data for the client view.
   const claims = pendingTrips.map((t) => ({

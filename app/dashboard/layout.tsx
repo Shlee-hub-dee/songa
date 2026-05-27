@@ -1,8 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { prisma } from '@/lib/prisma';
-import { getAuthedUser } from '@/lib/supabase-server';
-import { ROLE_LABEL, type Role } from '@/lib/roles';
+import { getCurrentUser, getCurrentAuthUser } from '@/lib/current-user';
+import { ROLE_LABEL } from '@/lib/roles';
 import { Button } from '@/components/ui/button';
 import { SidebarNav } from '@/components/nav/sidebar-nav';
 import { BottomNav } from '@/components/nav/bottom-nav';
@@ -17,19 +16,15 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const authUser = await getAuthedUser();
+  // Both calls are React-cached so the page that renders inside this layout
+  // can call them again and they'll be deduped within this request.
+  const [me, authUser] = await Promise.all([
+    getCurrentUser(),
+    getCurrentAuthUser(),
+  ]);
 
-  let profile: { name: string; role: Role } | null = null;
-  if (authUser) {
-    const row = await prisma.user.findUnique({
-      where: { supabaseUserId: authUser.id },
-      select: { name: true, role: true },
-    });
-    if (row) profile = { name: row.name, role: row.role as Role };
-  }
-
-  const displayName = profile?.name ?? authUser?.email ?? '';
-  const role = profile?.role ?? null;
+  const displayName = me?.name ?? authUser?.email ?? '';
+  const role = me?.role ?? null;
   const roleLabel = role ? ROLE_LABEL[role] : '';
 
   return (

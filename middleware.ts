@@ -146,7 +146,12 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Run on all routes except Next internals and static assets; route logic
-  // above decides whether to redirect.
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  // Only run on routes the middleware actually needs to gate:
+  //   - /dashboard/* (auth + role-section + trip-log block)
+  //   - /login      (so the supabase client can refresh expired tokens before
+  //                  the page renders the login form)
+  // API routes do their own auth via getAuthedUser() inside the route, so we
+  // don't need to pay the supabase.auth.getUser() round-trip on every fetch.
+  // Static assets and _next internals are skipped entirely.
+  matcher: ['/dashboard/:path*', '/login'],
 };

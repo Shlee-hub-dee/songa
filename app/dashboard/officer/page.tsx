@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
-import { getAuthedUser } from '@/lib/supabase-server';
+import { getCurrentUser } from '@/lib/current-user';
 import { resolveRateForDate } from '@/lib/rates';
 import { TRIP_TYPE_LABEL, type TripType } from '@/lib/active-trip';
 import { ROLE_LABEL, type Role } from '@/lib/roles';
@@ -76,39 +76,34 @@ function buildLast6Months(): MonthlyEarnings[] {
 type Props = { searchParams: { blocked?: string; role?: string } };
 
 export default async function OfficerDashboard({ searchParams }: Props) {
-  const authUser = await getAuthedUser();
-  if (!authUser) redirect('/login');
-
-  const me = await prisma.user.findUnique({
-    where: { supabaseUserId: authUser.id },
-    select: { id: true, name: true, role: true, region: true, isActive: true },
-  });
+  const me = await getCurrentUser();
   if (!me || !me.isActive) redirect('/login');
 
-  // Resolve current rate (server-side; never trust the client).
-  let ratePerKm: number | null = null;
-  try {
-    const resolved = await resolveRateForDate(new Date());
-    ratePerKm = resolved.ratePerKm;
-  } catch {
-    ratePerKm = null;
-  }
-
-  const trips = await prisma.trip.findMany({
-    where: { userId: me.id },
-    select: {
-      id: true,
-      type: true,
-      status: true,
-      distanceKm: true,
-      amountKes: true,
-      startTime: true,
-      submittedAt: true,
-      reimbursedAt: true,
-      payment: { select: { id: true } },
-    },
-    orderBy: { startTime: 'desc' },
-  });
+  // Resolve current rate AND fetch trips in parallel — they're independent
+  // so there's no reason to serialise.
+  const [resolved, trips] = await Promise.all([
+    resolveRateForDate(new Date()).catch(() => null),
+    prisma.trip.findMany({
+      where: { userId: me.id },
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        distanceKm: true,
+        amountKes: true,
+        startTime: true,
+        submittedAt: true,
+        reimbursedAt: true,
+        payment: { select: { id: true } },
+      },
+      orderBy: { startTime: 'desc' },
+      // Bound the table so a power-user with hundreds of trips doesn't
+      // ship a multi-megabyte payload. The KPI roll-ups become "last N",
+      // which is fine for personal at-a-glance numbers.
+      take: 500,
+    }),
+  ]);
+  const ratePerKm = resolved?.ratePerKm ?? null;
 
   // ── KPIs ──
   const totalTrips = trips.length;

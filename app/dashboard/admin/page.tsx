@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
-import { getAuthedUser } from '@/lib/supabase-server';
+import { getCurrentUser } from '@/lib/current-user';
 import { TRIP_TYPE_LABEL, type TripType } from '@/lib/active-trip';
 import { type Role } from '@/lib/roles';
 import { BlockedNotice, parseBlockedReason } from '@/components/nav/blocked-notice';
@@ -19,13 +19,7 @@ export const dynamic = 'force-dynamic';
 type Props = { searchParams: { blocked?: string; role?: string } };
 
 export default async function AdminOverview({ searchParams }: Props) {
-  const authUser = await getAuthedUser();
-  if (!authUser) redirect('/login');
-
-  const me = await prisma.user.findUnique({
-    where: { supabaseUserId: authUser.id },
-    select: { role: true, isActive: true },
-  });
+  const me = await getCurrentUser();
   if (!me || !me.isActive) redirect('/login');
   if (me.role !== 'ADMIN') redirect('/dashboard');
 

@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
-import { getAuthedUser } from '@/lib/supabase-server';
+import { getCurrentUser } from '@/lib/current-user';
 import { TRIP_TYPE_LABEL, type TripType } from '@/lib/active-trip';
 import { ROLE_LABEL, type Role } from '@/lib/roles';
 import { BlockedNotice, parseBlockedReason } from '@/components/nav/blocked-notice';
@@ -56,14 +56,9 @@ function startOfQuarter(): Date {
 }
 
 export default async function FinancePage({ searchParams }: Props) {
-  const authUser = await getAuthedUser();
-  if (!authUser) redirect('/login');
-
-  const me = await prisma.user.findUnique({
-    where: { supabaseUserId: authUser.id },
-    select: { role: true, isActive: true },
-  });
-  if (!me || !me.isActive) redirect('/login');
+  const me = await getCurrentUser();
+  if (!me) redirect('/login');
+  if (!me.isActive) redirect('/login');
   if (me.role !== 'FINANCE_MANAGER' && me.role !== 'ADMIN') redirect('/dashboard');
 
   // ── Parse filters ──
@@ -85,77 +80,93 @@ export default async function FinancePage({ searchParams }: Props) {
   const monthStart = startOfMonth();
   const quarterStart = startOfQuarter();
 
-  const [pendingTrips, monthDisbursedAgg, quarterDisbursedAgg, periodTrips] =
-    await Promise.all([
-      prisma.trip.findMany({
+  const [
+    pendingTrips,
+    monthDisbursedAgg,
+    quarterDisbursedAgg,
+    periodTrips,
+    regions,
+  ] = await Promise.all([
+    prisma.trip.findMany({
+      where: {
+        status: 'APPROVED',
+        ...(Object.keys(userWhere).length > 0 ? { user: userWhere } : {}),
+      },
+      select: {
+        id: true,
+        type: true,
+        distanceKm: true,
+        amountKes: true,
+        startTime: true,
+        submittedAt: true,
+        approvedAt: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            role: true,
+            region: true,
+            phone: true,
+            organisationalUnit: true,
+          },
+        },
+        payment: {
+          select: { mpesaRef: true, recipientPhone: true, paidAt: true },
+        },
+      },
+      orderBy: { approvedAt: 'asc' },
+      // Cap at 2000 trips to bound HTML payload + serialisation cost.
+      // Any reasonable backlog is far smaller; if we ever hit this we should
+      // paginate the queue instead of dumping the whole thing into one page.
+      take: 2000,
+    }),
+    prisma.trip.aggregate({
+      where: {
+        status: 'REIMBURSED',
+        reimbursedAt: { gte: monthStart },
+        ...(Object.keys(userWhere).length > 0 ? { user: userWhere } : {}),
+      },
+      _sum: { amountKes: true },
+    }),
+    prisma.trip.aggregate({
+      where: {
+        status: 'REIMBURSED',
+        reimbursedAt: { gte: quarterStart },
+        ...(Object.keys(userWhere).length > 0 ? { user: userWhere } : {}),
+      },
+      _sum: { amountKes: true },
+    }),
+    // For the spend analytics + role breakdown. Apply the period filter if
+    // one is set; otherwise pull the last 12 months so the trend chart has
+    // useful data without overloading the query.
+    (() => {
+      const since = periodWindow?.start ?? lastNMonthsStart();
+      const until = periodWindow?.end ?? new Date(Date.now() + 24 * 60 * 60 * 1000);
+      return prisma.trip.findMany({
         where: {
-          status: 'APPROVED',
+          status: { in: ['APPROVED', 'REIMBURSED'] },
+          startTime: { gte: since, lt: until },
           ...(Object.keys(userWhere).length > 0 ? { user: userWhere } : {}),
         },
         select: {
           id: true,
-          type: true,
-          distanceKm: true,
+          status: true,
           amountKes: true,
           startTime: true,
-          submittedAt: true,
-          approvedAt: true,
           user: {
-            select: {
-              id: true,
-              name: true,
-              role: true,
-              region: true,
-              phone: true,
-              organisationalUnit: true,
-            },
-          },
-          payment: {
-            select: { mpesaRef: true, recipientPhone: true, paidAt: true },
+            select: { id: true, role: true, organisationalUnit: true, region: true },
           },
         },
-        orderBy: { approvedAt: 'asc' },
-      }),
-      prisma.trip.aggregate({
-        where: {
-          status: 'REIMBURSED',
-          reimbursedAt: { gte: monthStart },
-          ...(Object.keys(userWhere).length > 0 ? { user: userWhere } : {}),
-        },
-        _sum: { amountKes: true },
-      }),
-      prisma.trip.aggregate({
-        where: {
-          status: 'REIMBURSED',
-          reimbursedAt: { gte: quarterStart },
-          ...(Object.keys(userWhere).length > 0 ? { user: userWhere } : {}),
-        },
-        _sum: { amountKes: true },
-      }),
-      // For the spend analytics + role breakdown. Apply the period filter if
-      // one is set; otherwise pull the last 12 months so the trend chart has
-      // useful data without overloading the query.
-      (() => {
-        const since = periodWindow?.start ?? lastNMonthsStart();
-        const until = periodWindow?.end ?? new Date(Date.now() + 24 * 60 * 60 * 1000);
-        return prisma.trip.findMany({
-          where: {
-            status: { in: ['APPROVED', 'REIMBURSED'] },
-            startTime: { gte: since, lt: until },
-            ...(Object.keys(userWhere).length > 0 ? { user: userWhere } : {}),
-          },
-          select: {
-            id: true,
-            status: true,
-            amountKes: true,
-            startTime: true,
-            user: {
-              select: { id: true, role: true, organisationalUnit: true, region: true },
-            },
-          },
-        });
-      })(),
-    ]);
+        take: 5000,
+      });
+    })(),
+    prisma.user.findMany({
+      where: { region: { not: null } },
+      select: { region: true },
+      distinct: ['region'],
+      orderBy: { region: 'asc' },
+    }),
+  ]);
 
   // ── Group pending trips by officer ──
   type OfficerAggregate = OfficerGroup & { groupAmount: number };
@@ -241,14 +252,6 @@ export default async function FinancePage({ searchParams }: Props) {
     role: r,
     ...(roleBreakdown.get(r) ?? { trips: 0, amount: 0 }),
   }));
-
-  // ── Region dropdown options ──
-  const regions = await prisma.user.findMany({
-    where: { region: { not: null } },
-    select: { region: true },
-    distinct: ['region'],
-    orderBy: { region: 'asc' },
-  });
 
   const payrollRows: PayrollRow[] = groups.map((g) => {
     const totalKm = g.trips.reduce((s, t) => s + t.distanceKm, 0);
