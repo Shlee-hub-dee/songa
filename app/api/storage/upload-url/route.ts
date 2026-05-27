@@ -59,10 +59,17 @@ export async function POST(req: NextRequest) {
     .createSignedUploadUrl(path);
 
   if (error || !data) {
-    return NextResponse.json(
-      { error: error?.message ?? 'Could not create signed upload URL' },
-      { status: 500 },
-    );
+    // Supabase Storage uses "the related resource does not exist" both for
+    // a missing bucket and a missing object. The bucket is the common case
+    // (provisioned via scripts/check-storage-bucket.ts --create), so call
+    // that out specifically.
+    const rawMsg = error?.message ?? 'Could not create signed upload URL';
+    const looksLikeMissingBucket = /not.{0,4}exist|not found|no such/i.test(rawMsg);
+    const friendly = looksLikeMissingBucket
+      ? `Storage bucket "${MPESA_BUCKET}" is not provisioned. Ask an admin to run scripts/check-storage-bucket.ts --create.`
+      : rawMsg;
+    console.error('createSignedUploadUrl failed:', rawMsg);
+    return NextResponse.json({ error: friendly }, { status: 500 });
   }
 
   return NextResponse.json({
