@@ -27,7 +27,8 @@ function startOfMonth(): Date {
 
 export default async function ApprovalsPage({ searchParams }: Props) {
   const me = await getCurrentUser();
-  if (!me || !me.isActive) redirect('/login');
+  if (!me) redirect('/dashboard');
+  if (!me.isActive) redirect('/login?signedOut=1');
 
   const role = me.role as Role;
   // ADMIN is permitted to view this page (their direct reports are the RMs);

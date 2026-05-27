@@ -77,7 +77,8 @@ type Props = { searchParams: { blocked?: string; role?: string } };
 
 export default async function OfficerDashboard({ searchParams }: Props) {
   const me = await getCurrentUser();
-  if (!me || !me.isActive) redirect('/login');
+  if (!me) redirect('/dashboard');
+  if (!me.isActive) redirect('/login?signedOut=1');
 
   // Resolve current rate AND fetch trips in parallel — they're independent
   // so there's no reason to serialise.

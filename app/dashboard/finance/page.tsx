@@ -56,9 +56,13 @@ function startOfQuarter(): Date {
 }
 
 export default async function FinancePage({ searchParams }: Props) {
+  // `/dashboard` distinguishes "no Supabase session" (→ /login) from
+  // "authed but not provisioned" (renders an error). Sending unauthed +
+  // unlinked users straight to /login used to redirect-loop because the
+  // Supabase cookie was still valid.
   const me = await getCurrentUser();
-  if (!me) redirect('/login');
-  if (!me.isActive) redirect('/login');
+  if (!me) redirect('/dashboard');
+  if (!me.isActive) redirect('/login?signedOut=1');
   if (me.role !== 'FINANCE_MANAGER' && me.role !== 'ADMIN') redirect('/dashboard');
 
   // ── Parse filters ──

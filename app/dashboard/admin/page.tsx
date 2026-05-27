@@ -20,7 +20,9 @@ type Props = { searchParams: { blocked?: string; role?: string } };
 
 export default async function AdminOverview({ searchParams }: Props) {
   const me = await getCurrentUser();
-  if (!me || !me.isActive) redirect('/login');
+  // See finance/page.tsx for the redirect-loop reasoning.
+  if (!me) redirect('/dashboard');
+  if (!me.isActive) redirect('/login?signedOut=1');
   if (me.role !== 'ADMIN') redirect('/dashboard');
 
   // ── Pull everything in parallel ──
