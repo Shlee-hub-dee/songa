@@ -7,18 +7,35 @@ import { getAuthedUser } from '@/lib/supabase-server';
 export const runtime = 'nodejs';
 
 const BodySchema = z.object({
-  tripId: z.string().min(1),
+  tripId: z.string().min(1, { message: 'tripId is required' }),
   // M-Pesa refs are typically 10-char alphanumeric (e.g. "QHX1234ABC")
   mpesaRef: z
     .string()
     .trim()
-    .min(6, 'M-Pesa reference is too short')
-    .max(32)
-    .regex(/^[A-Za-z0-9]+$/, 'M-Pesa reference must be alphanumeric'),
-  amountKes: z.number().positive(),
-  recipientPhone: z.string().trim().min(7).max(20),
-  screenshotPath: z.string().min(1).optional(),
-  paidAt: z.string().datetime().optional(),
+    .min(6, { message: 'M-Pesa reference is too short' })
+    .max(32, { message: 'M-Pesa reference is too long' })
+    .regex(/^[A-Za-z0-9]+$/, {
+      message: 'M-Pesa reference must be alphanumeric',
+    }),
+  amountKes: z.number({ message: 'Amount must be a number' }).positive({
+    message: 'Amount must be greater than 0',
+  }),
+  // International phone formats with spaces or country codes can exceed 20
+  // chars (e.g. "+254 712 345 678"). 25 keeps validation strict but doesn't
+  // false-reject typical Kenyan / international inputs.
+  recipientPhone: z
+    .string()
+    .trim()
+    .min(7, { message: 'Recipient phone is too short' })
+    .max(25, { message: 'Recipient phone is too long' }),
+  screenshotPath: z
+    .string()
+    .min(1, { message: 'screenshotPath must not be empty' })
+    .optional(),
+  paidAt: z
+    .string()
+    .datetime({ message: 'paidAt must be an ISO datetime' })
+    .optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -40,7 +57,14 @@ export async function POST(req: NextRequest) {
     body = BodySchema.parse(await req.json());
   } catch (err) {
     const message =
-      err instanceof z.ZodError ? err.issues.map((i) => i.message).join('; ') : 'Invalid body';
+      err instanceof z.ZodError
+        ? err.issues
+            .map((i) => {
+              const field = i.path.join('.');
+              return field ? `${field}: ${i.message}` : i.message;
+            })
+            .join('; ')
+        : 'Invalid body';
     return NextResponse.json({ error: message }, { status: 400 });
   }
 

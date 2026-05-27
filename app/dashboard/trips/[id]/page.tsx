@@ -21,7 +21,7 @@ export default async function TripDetailPage({ params }: Props) {
   const trip = await prisma.trip.findUnique({
     where: { id: params.id },
     include: {
-      user: { select: { id: true, name: true, email: true } },
+      user: { select: { id: true, name: true, email: true, phone: true } },
       approver: { select: { id: true, name: true } },
       payment: true,
     },
@@ -92,7 +92,7 @@ export default async function TripDetailPage({ params }: Props) {
           <PaymentForm
             tripId={trip.id}
             expectedAmount={Number(trip.amountKes)}
-            defaultPhone={trip.user.email}
+            defaultPhone={trip.user.phone ?? undefined}
           />
         ) : (
           <p className="rounded-md border border-dashed bg-card p-4 text-sm text-muted-foreground">
