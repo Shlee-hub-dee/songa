@@ -88,7 +88,7 @@ export function UsersTable({
       ) : null}
 
       <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[900px] text-sm">
           <thead className="bg-brand-surface/60 text-left text-xs font-medium uppercase tracking-wide text-brand">
             <tr>
               <th className="px-3 py-2.5">Name</th>

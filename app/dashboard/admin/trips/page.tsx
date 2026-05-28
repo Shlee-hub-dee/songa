@@ -67,8 +67,8 @@ export default async function AdminAllTripsPage() {
         </p>
       </header>
 
-      <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
+        <table className="w-full min-w-[800px] text-sm">
           <thead className="bg-brand-surface/60 text-left text-xs font-medium uppercase tracking-wide text-brand">
             <tr>
               <th className="px-4 py-2.5">Date</th>

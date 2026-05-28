@@ -395,7 +395,7 @@ export default async function FinancePage({ searchParams }: Props) {
             {period.type === 'all' ? 'Last 12 months' : periodLabel(period)}
           </p>
         </header>
-        <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
+        <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
           <table className="w-full text-sm">
             <thead className="bg-brand-surface/60 text-left text-xs font-medium uppercase tracking-wide text-brand">
               <tr>

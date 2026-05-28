@@ -223,8 +223,8 @@ export function AllPendingSection({ trips }: { trips: PendingTripRow[] }) {
       </ul>
 
       {/* Tablet+ table */}
-      <div className="hidden overflow-hidden rounded-lg border bg-card shadow-sm tablet:block">
-        <table className="w-full text-sm">
+      <div className="hidden overflow-x-auto rounded-lg border bg-card shadow-sm tablet:block">
+        <table className="w-full min-w-[900px] text-sm">
           <thead className="bg-brand-surface/60 text-left text-xs font-medium uppercase tracking-wide text-brand">
             <tr>
               <th className="px-3 py-2.5">Officer</th>
